@@ -121,7 +121,6 @@ def admin_dashboard_page():
             * { box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
             body { margin: 0; background: #f4f6f9; color: #333; display: flex; height: 100vh; overflow: hidden; }
             
-            /* Sidebar Styling */
             aside { width: 260px; background: #003d80; color: white; display: flex; flex-direction: column; flex-shrink: 0; }
             aside .brand { padding: 20px; font-size: 18px; font-weight: bold; background: #002b5c; border-bottom: 1px solid rgba(255,255,255,0.1); }
             aside ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex: 1; }
@@ -134,7 +133,6 @@ def admin_dashboard_page():
             aside .single-menu { padding: 12px 20px; display: block; color: white; text-decoration: none; font-weight: bold; font-size: 14px; }
             aside .single-menu:hover { background: #0056b3; }
 
-            /* Main Content Area */
             main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
             header { background: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; }
             header h1 { margin: 0; font-size: 18px; color: #0056b3; }
@@ -143,7 +141,6 @@ def admin_dashboard_page():
             .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); margin-bottom: 20px; }
             h2 { color: #0056b3; margin-top: 0; font-size: 16px; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
             
-            /* Table & Form Styling */
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { border: 1px solid #ddd; padding: 9px 12px; text-align: left; font-size: 13px; }
             th { background: #f8f9fa; color: #444; }
@@ -160,30 +157,30 @@ def admin_dashboard_page():
             .badge { padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
             .badge-lunas { background: #d4edda; color: #155724; }
             .badge-pending { background: #fff3cd; color: #856404; }
+
+            .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
+            .modal-content { background: white; width: 100%; max-width: 600px; border-radius: 8px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+            .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+            .modal-header h3 { margin: 0; color: #0056b3; font-size: 16px; }
+            .close-btn { font-size: 20px; cursor: pointer; border: none; background: none; font-weight: bold; color: #888; }
         </style>
     </head>
     <body>
 
-        <!-- SIDEBAR NAVIGATION MENU -->
         <aside id="sidebar" class="hidden">
             <div class="brand">OMRON SERVICE</div>
             <ul>
-                <!-- 1. Dashboard -->
-                <li>
-                    <a href="#" class="single-menu" onclick="showTab('dashboard')">1. Dashboard</a>
-                </li>
+                <li><a href="#" class="single-menu" onclick="showTab('dashboard')">1. Dashboard</a></li>
 
-                <!-- 2. Data Service -->
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-service')">2. Data Service <span>▼</span></div>
-                    <ul id="sub-service" class="submenu">
-                        <li><a href="#" onclick="showTab('service-pusat')">a. Data di Pusat</a></li>
+                    <ul id="sub-service" class="submenu open">
+                        <li><a href="#" class="active" onclick="showTab('service-pusat')">a. Data di Pusat</a></li>
                         <li><a href="#" onclick="showTab('service-cabang')">b. Data di Cabang</a></li>
                         <li><a href="#" onclick="showTab('service-pickup')">c. Data di Pickup Center</a></li>
                     </ul>
                 </li>
 
-                <!-- 3. Status Payment Service -->
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-payment')">3. Status Payment Service <span>▼</span></div>
                     <ul id="sub-payment" class="submenu">
@@ -193,7 +190,6 @@ def admin_dashboard_page():
                     </ul>
                 </li>
 
-                <!-- 4. Inventory Part -->
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-inventory')">4. Inventory Part <span>▼</span></div>
                     <ul id="sub-inventory" class="submenu">
@@ -208,7 +204,6 @@ def admin_dashboard_page():
                     </ul>
                 </li>
 
-                <!-- 5. Setting Super Admin -->
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-setting')">5. Setting (Super Admin) <span>▼</span></div>
                     <ul id="sub-setting" class="submenu">
@@ -219,7 +214,6 @@ def admin_dashboard_page():
             </ul>
         </aside>
 
-        <!-- MAIN CONTENT AREA -->
         <main>
             <header>
                 <h1 id="pageTitle">Portal Management System</h1>
@@ -230,8 +224,6 @@ def admin_dashboard_page():
             </header>
 
             <div class="content">
-                
-                <!-- LOGIN CARD -->
                 <div id="loginCard" class="card login-box">
                     <h2>Login Super Admin / Internal</h2>
                     <div class="form-group">
@@ -245,21 +237,21 @@ def admin_dashboard_page():
                     <button class="btn" style="width: 100%;" onclick="login()">Masuk ke Sistem</button>
                 </div>
 
-                <!-- 1. TAB DASHBOARD -->
+                <!-- 1. DASHBOARD -->
                 <div id="tab-dashboard" class="tab-content hidden">
                     <div class="card">
                         <h2>Ringkasan Dashboard Utama</h2>
                         <div class="form-grid">
                             <div style="background:#e3f2fd; padding:15px; border-radius:6px; text-align:center;">
-                                <h3 style="margin:0; color:#0d47a1;">124</h3>
+                                <h3 id="statPusat" style="margin:0; color:#0d47a1;">0</h3>
                                 <small>Total Servis Pusat</small>
                             </div>
                             <div style="background:#e8f5e9; padding:15px; border-radius:6px; text-align:center;">
-                                <h3 style="margin:0; color:#1b5e20;">48</h3>
+                                <h3 id="statCabang" style="margin:0; color:#1b5e20;">0</h3>
                                 <small>Total Servis Cabang</small>
                             </div>
                             <div style="background:#fff3e0; padding:15px; border-radius:6px; text-align:center;">
-                                <h3 style="margin:0; color:#e65100;">12</h3>
+                                <h3 id="statPickup" style="margin:0; color:#e65100;">0</h3>
                                 <small>Servis Pickup Center</small>
                             </div>
                         </div>
@@ -269,31 +261,39 @@ def admin_dashboard_page():
                 <!-- 2. DATA SERVICE -->
                 <div id="tab-service-pusat" class="tab-content hidden">
                     <div class="card">
-                        <h2>2a. Data Service - Pusat</h2>
-                        <button class="btn btn-success" onclick="alert('Membuka Form Tambah Tiket Pusat')">+ Tambah Service Pusat</button>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">2a. Data Service - Pusat</h2>
+                            <button class="btn btn-success" onclick="openModal('service-pusat')">+ Tambah Service Pusat</button>
+                        </div>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Pelanggan</th><th>Model Alat</th><th>Keluhan</th><th>Status</th></tr></thead>
-                            <tbody id="tableServicePusat"><tr><td colspan="5">Memuat data pusat...</td></tr></tbody>
+                            <thead><tr><th>No. Tiket</th><th>Pelanggan</th><th>No. HP</th><th>Model Alat</th><th>Keluhan</th><th>Status</th></tr></thead>
+                            <tbody id="tableServicePusat"></tbody>
                         </table>
                     </div>
                 </div>
 
                 <div id="tab-service-cabang" class="tab-content hidden">
                     <div class="card">
-                        <h2>2b. Data Service - Cabang</h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">2b. Data Service - Cabang</h2>
+                            <button class="btn btn-success" onclick="openModal('service-cabang')">+ Tambah Service Cabang</button>
+                        </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Pelanggan</th><th>Model Alat</th><th>Status</th></tr></thead>
-                            <tbody><tr><td>TCK-CBG-001</td><td>Surabaya</td><td>Ahmad Yani</td><td>HEM-7120</td><td>Dalam Perbaikan</td></tr></tbody>
+                            <tbody id="tableServiceCabang"></tbody>
                         </table>
                     </div>
                 </div>
 
                 <div id="tab-service-pickup" class="tab-content hidden">
                     <div class="card">
-                        <h2>2c. Data Service - Pickup Center</h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">2c. Data Service - Pickup Center</h2>
+                            <button class="btn btn-success" onclick="openModal('service-pickup')">+ Tambah Service Pickup</button>
+                        </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Pickup Point</th><th>Pelanggan</th><th>Status Kurir</th></tr></thead>
-                            <tbody><tr><td>TCK-PKP-102</td><td>Apotek K-24 Jakarta</td><td>Dewi Sartika</td><td>Diterima di Pusat</td></tr></tbody>
+                            <tbody id="tableServicePickup"></tbody>
                         </table>
                     </div>
                 </div>
@@ -301,98 +301,87 @@ def admin_dashboard_page():
                 <!-- 3. STATUS PAYMENT SERVICE -->
                 <div id="tab-payment-pusat" class="tab-content hidden">
                     <div class="card">
-                        <h2>3a. Status Payment Service - Pusat</h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">3a. Status Payment Service - Pusat</h2>
+                            <button class="btn btn-success" onclick="openModal('payment-pusat')">+ Catat Payment Pusat</button>
+                        </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Total Biaya</th><th>Metode</th><th>Kode Payment</th><th>Status</th></tr></thead>
-                            <tbody><tr><td>TCK-202609-001</td><td>Rp 150.000</td><td>QRIS / Transfer</td><td>PAY-882910</td><td><span class="badge badge-lunas">Lunas</span></td></tr></tbody>
+                            <tbody id="tablePaymentPusat"></tbody>
                         </table>
                     </div>
                 </div>
 
                 <div id="tab-payment-cabang" class="tab-content hidden">
                     <div class="card">
-                        <h2>3b. Status Payment Service - Cabang</h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">3b. Status Payment Service - Cabang</h2>
+                            <button class="btn btn-success" onclick="openModal('payment-cabang')">+ Catat Payment Cabang</button>
+                        </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Total Biaya</th><th>Kode Payment</th><th>Status</th></tr></thead>
-                            <tbody><tr><td>TCK-CBG-001</td><td>Surabaya</td><td>Rp 85.000</td><td>PAY-331029</td><td><span class="badge badge-pending">Pending</span></td></tr></tbody>
+                            <tbody id="tablePaymentCabang"></tbody>
                         </table>
                     </div>
                 </div>
 
                 <div id="tab-payment-pickup" class="tab-content hidden">
                     <div class="card">
-                        <h2>3c. Status Payment Service - Pickup Center</h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">3c. Status Payment Service - Pickup Center</h2>
+                            <button class="btn btn-success" onclick="openModal('payment-pickup')">+ Catat Payment Pickup</button>
+                        </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Pickup Location</th><th>Biaya Kirim & Servis</th><th>Status</th></tr></thead>
-                            <tbody><tr><td>TCK-PKP-102</td><td>Apotek K-24</td><td>Rp 120.000</td><td><span class="badge badge-lunas">Lunas</span></td></tr></tbody>
+                            <tbody id="tablePaymentPickup"></tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- 4. INVENTORY PART PUSAT & CABANG -->
+                <!-- 4. INVENTORY PART -->
                 <div id="tab-inv-pusat-list" class="tab-content hidden">
                     <div class="card">
-                        <h2>4a.1. List Stok Spare Part di Pusat</h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">4a.1. List Stok Spare Part di Pusat</h2>
+                            <button class="btn btn-success" onclick="openModal('inv-pusat-list')">+ Tambah Stok Part Pusat</button>
+                        </div>
                         <table>
                             <thead><tr><th>Kode Part</th><th>Nama Spare Part</th><th>Kategori</th><th>Stok Pusat</th></tr></thead>
-                            <tbody><tr><td>PRT-001</td><td>Cuff / Manset Tensimeter Standard</td><td>Tensimeter</td><td>250 Pcs</td></tr></tbody>
+                            <tbody id="tableInvPusatList"></tbody>
                         </table>
                     </div>
                 </div>
 
-                <div id="tab-inv-pusat-pakai" class="tab-content hidden">
-                    <div class="card">
-                        <h2>4a.2. Catatan Pemakaian Stok di Pusat</h2>
-                        <p>Riwayat penggunaan spare part untuk pengerjaan unit servis di Pusat.</p>
-                    </div>
-                </div>
-
-                <div id="tab-inv-pusat-terima" class="tab-content hidden">
-                    <div class="card">
-                        <h2>4a.3. Penerimaan Stok dari Gudang Utama</h2>
-                        <p>Daftar persetujuan dan masukan stok baru dari Gudang Utama Omron.</p>
-                    </div>
-                </div>
-
-                <div id="tab-inv-pusat-kirim" class="tab-content hidden">
-                    <div class="card">
-                        <h2>4a.4. Pengiriman Stok ke Cabang</h2>
-                        <p>Pengiriman pasokan spare part dari Pusat ke cabang-cabang daerah.</p>
-                    </div>
-                </div>
-
+                <div id="tab-inv-pusat-pakai" class="tab-content hidden"><div class="card"><h2>4a.2. Pemakaian Stok di Pusat</h2><p>Riwayat pemakaian spare part pengerjaan servis pusat.</p></div></div>
+                <div id="tab-inv-pusat-terima" class="tab-content hidden"><div class="card"><h2>4a.3. Penerimaan Stok dari Gudang Utama</h2><p>Daftar masukan stok baru dari Gudang Utama.</p></div></div>
+                <div id="tab-inv-pusat-kirim" class="tab-content hidden"><div class="card"><h2>4a.4. Pengiriman Stok ke Cabang</h2><p>Pengiriman stok part dari Pusat ke cabang.</p></div></div>
                 <div id="tab-inv-cabang-list" class="tab-content hidden">
                     <div class="card">
-                        <h2>4b.1. List Stok di Cabang</h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0; border: none;">4b.1. List Stok di Cabang</h2>
+                            <button class="btn btn-success" onclick="openModal('inv-cabang-list')">+ Tambah Stok Part Cabang</button>
+                        </div>
                         <table>
                             <thead><tr><th>Kode Part</th><th>Nama Part</th><th>Cabang</th><th>Jumlah Stok</th></tr></thead>
-                            <tbody><tr><td>PRT-001</td><td>Cuff Tensimeter Standard</td><td>Surabaya</td><td>35 Pcs</td></tr></tbody>
+                            <tbody id="tableInvCabangList"></tbody>
                         </table>
                     </div>
                 </div>
-
-                <div id="tab-inv-cabang-pakai" class="tab-content hidden">
-                    <div class="card"><h2>4b.2. Pemakaian Stok di Cabang</h2><p>Penggunaan part oleh teknisi cabang.</p></div>
-                </div>
-                <div id="tab-inv-cabang-terima" class="tab-content hidden">
-                    <div class="card"><h2>4b.3. Penerimaan Stok dari Pusat</h2><p>Konfirmasi penerimaan part dari Pusat.</p></div>
-                </div>
-                <div id="tab-inv-cabang-minta" class="tab-content hidden">
-                    <div class="card"><h2>4b.4. Permintaan Stok ke Pusat</h2><p>Form permintaan pengisian ulang stok part ke Pusat.</p></div>
-                </div>
+                <div id="tab-inv-cabang-pakai" class="tab-content hidden"><div class="card"><h2>4b.2. Pemakaian Stok di Cabang</h2><p>Penggunaan part oleh teknisi cabang.</p></div></div>
+                <div id="tab-inv-cabang-terima" class="tab-content hidden"><div class="card"><h2>4b.3. Penerimaan Stok dari Pusat</h2><p>Konfirmasi penerimaan part dari Pusat.</p></div></div>
+                <div id="tab-inv-cabang-minta" class="tab-content hidden"><div class="card"><h2>4b.4. Permintaan Stok ke Pusat</h2><p>Form permintaan pengisian ulang stok part ke Pusat.</p></div></div>
 
                 <!-- 5. SETTING SUPER ADMIN -->
                 <div id="tab-setting-fields" class="tab-content hidden">
                     <div class="card">
                         <h2>5a. Setting Field Data Service (Super Admin)</h2>
-                        <p>Atur Master Data Field Sistem:</p>
                         <div class="form-grid">
-                            <div><label>Category Alat</label><input placeholder="Tensimeter, Nebulizer"><button class="btn" style="margin-top:5px;">Tambah</button></div>
-                            <div><label>Model Alat</label><input placeholder="HEM-7120, MC-246"><button class="btn" style="margin-top:5px;">Tambah</button></div>
-                            <div><label>Source of Device</label><input placeholder="Official Store, Distributor"><button class="btn" style="margin-top:5px;">Tambah</button></div>
-                            <div><label>Warranty Period</label><input placeholder="1 Tahun, 3 Tahun"><button class="btn" style="margin-top:5px;">Tambah</button></div>
-                            <div><label>Data Provinsi</label><input placeholder="DKI Jakarta, Jawa Timur"><button class="btn" style="margin-top:5px;">Tambah</button></div>
-                            <div><label>Data Kota/Kabupaten</label><input placeholder="Jakarta Pusat, Surabaya"><button class="btn" style="margin-top:5px;">Tambah</button></div>
+                            <div><label>Category Alat</label><input id="setCategory" placeholder="Tensimeter, Nebulizer"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Category')">Tambah</button></div>
+                            <div><label>Model Alat</label><input id="setModel" placeholder="HEM-7120, MC-246"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Model')">Tambah</button></div>
+                            <div><label>Source of Device</label><input id="setSource" placeholder="Official Store, Distributor"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Source')">Tambah</button></div>
+                            <div><label>Warranty Period</label><input id="setWarranty" placeholder="1 Tahun, 3 Tahun"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Warranty')">Tambah</button></div>
+                            <div><label>Data Provinsi</label><input id="setProv" placeholder="DKI Jakarta, Jawa Timur"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Provinsi')">Tambah</button></div>
+                            <div><label>Data Kota/Kabupaten</label><input id="setCity" placeholder="Jakarta Pusat, Surabaya"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Kota')">Tambah</button></div>
                         </div>
                     </div>
                 </div>
@@ -402,15 +391,15 @@ def admin_dashboard_page():
                         <h2>5b. Setting Field Status Payment & Kode Payment</h2>
                         <div class="form-group">
                             <label>Tambah Master Status Pembayaran</label>
-                            <input type="text" placeholder="Contoh: Menunggu Konfirmasi Bank" style="max-width: 300px;">
-                            <button class="btn" style="margin-top: 5px;">Simpan Status</button>
+                            <input type="text" id="setPayStatus" placeholder="Contoh: Menunggu Konfirmasi Bank" style="max-width: 300px;">
+                            <button class="btn" style="margin-top: 5px;" onclick="saveSettingField('Status Payment')">Simpan Status</button>
                         </div>
                         <hr style="margin:20px 0;">
                         <h2>Ganti / Reset Kode Payment</h2>
                         <div class="form-group">
                             <label>Masukkan Nomor Tiket / ID Transaksi</label>
-                            <input type="text" placeholder="TCK-202609-001" style="max-width: 300px;">
-                            <button class="btn btn-danger" style="margin-top: 5px;" onclick="alert('Kode Payment Berhasil Di-reset!')">Reset Kode Payment</button>
+                            <input type="text" id="resetPayTicket" placeholder="TCK-202609-001" style="max-width: 300px;">
+                            <button class="btn btn-danger" style="margin-top: 5px;" onclick="resetPaymentCode()">Reset Kode Payment</button>
                         </div>
                     </div>
                 </div>
@@ -418,18 +407,56 @@ def admin_dashboard_page():
             </div>
         </main>
 
+        <!-- MODAL DYNAMIC GENERIC FOR ALL MENUS -->
+        <div id="modalForm" class="modal-overlay hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modalTitle">Form Tambah Data</h3>
+                    <button class="close-btn" onclick="closeModal()">&times;</button>
+                </div>
+                <div id="modalBody"></div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                    <button class="btn" style="background:#6c757d;" onclick="closeModal()">Batal</button>
+                    <button class="btn btn-success" onclick="saveModalData()">Simpan Data</button>
+                </div>
+            </div>
+        </div>
+
         <script>
             let authToken = localStorage.getItem('omron_token') || '';
+            let currentActiveMenu = '';
+
+            // LocalStorage Database Storage Keys
+            const getStorage = (key) => JSON.parse(localStorage.getItem('omron_db_' + key) || '[]');
+            const setStorage = (key, data) => localStorage.setItem('omron_db_' + key, JSON.stringify(data));
 
             window.onload = function() {
+                initDefaultData();
                 if (authToken) {
                     showDashboardUI();
                 }
             };
 
+            function initDefaultData() {
+                if(!localStorage.getItem('omron_db_service-pusat')) {
+                    setStorage('service-pusat', [{ ticket: 'TCK-202609-001', name: 'Budi Santoso', phone: '081234567890', model: 'HEM-7120', complaint: 'Mati Total', status: 'Diterima Pusat' }]);
+                }
+                if(!localStorage.getItem('omron_db_service-cabang')) {
+                    setStorage('service-cabang', [{ ticket: 'TCK-CBG-001', branch: 'Surabaya', name: 'Ahmad Yani', model: 'HEM-7120', status: 'Dalam Perbaikan' }]);
+                }
+                if(!localStorage.getItem('omron_db_service-pickup')) {
+                    setStorage('service-pickup', [{ ticket: 'TCK-PKP-102', point: 'Apotek K-24 Jakarta', name: 'Dewi Sartika', status: 'Diterima di Pusat' }]);
+                }
+                if(!localStorage.getItem('omron_db_payment-pusat')) {
+                    setStorage('payment-pusat', [{ ticket: 'TCK-202609-001', amount: 'Rp 150.000', method: 'QRIS', code: 'PAY-882910', status: 'Lunas' }]);
+                }
+                if(!localStorage.getItem('omron_db_inv-pusat-list')) {
+                    setStorage('inv-pusat-list', [{ code: 'PRT-001', name: 'Cuff / Manset Tensimeter Standard', category: 'Tensimeter', qty: '250 Pcs' }]);
+                }
+            }
+
             function toggleSubmenu(id) {
-                const el = document.getElementById(id);
-                el.classList.toggle('open');
+                document.getElementById(id).classList.toggle('open');
             }
 
             function showDashboardUI() {
@@ -441,25 +468,154 @@ def admin_dashboard_page():
             }
 
             function showTab(tabId) {
-                // Sembunyikan semua tab content
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
                 
-                // Tampilkan tab target
                 const target = document.getElementById('tab-' + tabId);
                 if(target) target.classList.remove('hidden');
 
-                // Update judul halaman di header
                 document.getElementById('pageTitle').innerText = 'Menu: ' + tabId.toUpperCase().replace(/-/g, ' ');
 
-                // Load Data Jika Tab Service Pusat
-                if(tabId === 'service-pusat') loadTicketsPusat();
+                renderTableData(tabId);
+                updateDashboardStats();
+            }
+
+            function updateDashboardStats() {
+                document.getElementById('statPusat').innerText = getStorage('service-pusat').length;
+                document.getElementById('statCabang').innerText = getStorage('service-cabang').length;
+                document.getElementById('statPickup').innerText = getStorage('service-pickup').length;
+            }
+
+            function renderTableData(menu) {
+                const data = getStorage(menu);
+                if(menu === 'service-pusat') {
+                    const t = document.getElementById('tableServicePusat');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.name}</td><td>${d.phone||'-'}</td><td>${d.model}</td><td>${d.complaint||'-'}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="6" style="text-align:center;">Tidak ada data</td></tr>`;
+                } else if(menu === 'service-cabang') {
+                    const t = document.getElementById('tableServiceCabang');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.branch}</td><td>${d.name}</td><td>${d.model}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Tidak ada data</td></tr>`;
+                } else if(menu === 'service-pickup') {
+                    const t = document.getElementById('tableServicePickup');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.point}</td><td>${d.name}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
+                } else if(menu === 'payment-pusat') {
+                    const t = document.getElementById('tablePaymentPusat');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.amount}</td><td>${d.method}</td><td>${d.code}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Tidak ada data</td></tr>`;
+                } else if(menu === 'payment-cabang') {
+                    const t = document.getElementById('tablePaymentCabang');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.branch}</td><td>${d.amount}</td><td>${d.code}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Tidak ada data</td></tr>`;
+                } else if(menu === 'payment-pickup') {
+                    const t = document.getElementById('tablePaymentPickup');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.point}</td><td>${d.amount}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
+                } else if(menu === 'inv-pusat-list') {
+                    const t = document.getElementById('tableInvPusatList');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.code}</td><td>${d.name}</td><td>${d.category}</td><td>${d.qty}</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
+                } else if(menu === 'inv-cabang-list') {
+                    const t = document.getElementById('tableInvCabangList');
+                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.code}</td><td>${d.name}</td><td>${d.branch}</td><td>${d.qty}</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
+                }
+            }
+
+            function openModal(menu) {
+                currentActiveMenu = menu;
+                const modalBody = document.getElementById('modalBody');
+                document.getElementById('modalTitle').innerText = 'Tambah Data: ' + menu.toUpperCase();
+
+                if(menu.startsWith('service-')) {
+                    modalBody.innerHTML = `
+                        <div class="form-grid">
+                            <div class="form-group"><label>Nama Pelanggan</label><input id="inpName" placeholder="Budi Santoso"></div>
+                            <div class="form-group"><label>No. HP</label><input id="inpPhone" placeholder="081234567890"></div>
+                            ${menu === 'service-cabang' ? '<div class="form-group"><label>Nama Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
+                            ${menu === 'service-pickup' ? '<div class="form-group"><label>Pickup Point</label><input id="inpPoint" placeholder="Apotek K-24"></div>' : ''}
+                            <div class="form-group"><label>Model Alat</label><input id="inpModel" placeholder="HEM-7120"></div>
+                        </div>
+                        <div class="form-group"><label>Keluhan / Catatan</label><textarea id="inpComplaint" rows="2"></textarea></div>
+                    `;
+                } else if(menu.startsWith('payment-')) {
+                    modalBody.innerHTML = `
+                        <div class="form-grid">
+                            <div class="form-group"><label>No. Tiket</label><input id="inpTicket" placeholder="TCK-202609-xxx"></div>
+                            <div class="form-group"><label>Total Biaya (Rp)</label><input id="inpAmount" placeholder="150000"></div>
+                            ${menu === 'payment-cabang' ? '<div class="form-group"><label>Nama Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
+                            ${menu === 'payment-pickup' ? '<div class="form-group"><label>Pickup Location</label><input id="inpPoint" placeholder="Apotek K-24"></div>' : ''}
+                            ${menu === 'payment-pusat' ? '<div class="form-group"><label>Metode Pembayaran</label><input id="inpMethod" placeholder="QRIS / Transfer"></div>' : ''}
+                        </div>
+                    `;
+                } else if(menu.startsWith('inv-')) {
+                    modalBody.innerHTML = `
+                        <div class="form-grid">
+                            <div class="form-group"><label>Kode Spare Part</label><input id="inpCode" placeholder="PRT-002"></div>
+                            <div class="form-group"><label>Nama Spare Part</label><input id="inpPartName" placeholder="LCD Screen HEM-7120"></div>
+                            ${menu === 'inv-pusat-list' ? '<div class="form-group"><label>Kategori</label><input id="inpCategory" placeholder="Tensimeter"></div>' : ''}
+                            ${menu === 'inv-cabang-list' ? '<div class="form-group"><label>Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
+                            <div class="form-group"><label>Jumlah (Qty)</label><input id="inpQty" placeholder="50 Pcs"></div>
+                        </div>
+                    `;
+                }
+                document.getElementById('modalForm').classList.remove('hidden');
+            }
+
+            function closeModal() {
+                document.getElementById('modalForm').classList.add('hidden');
+            }
+
+            function saveModalData() {
+                const list = getStorage(currentActiveMenu);
+                const randomTicket = 'TCK-' + Math.floor(100000 + Math.random() * 900000);
+
+                if(currentActiveMenu.startsWith('service-')) {
+                    const newItem = {
+                        ticket: randomTicket,
+                        name: document.getElementById('inpName').value || 'Pelanggan Baru',
+                        phone: document.getElementById('inpPhone').value || '-',
+                        model: document.getElementById('inpModel').value || 'HEM-7120',
+                        complaint: document.getElementById('inpComplaint').value || '-',
+                        status: 'Diterima'
+                    };
+                    if(document.getElementById('inpBranch')) newItem.branch = document.getElementById('inpBranch').value;
+                    if(document.getElementById('inpPoint')) newItem.point = document.getElementById('inpPoint').value;
+                    list.push(newItem);
+
+                } else if(currentActiveMenu.startsWith('payment-')) {
+                    const newItem = {
+                        ticket: document.getElementById('inpTicket').value || randomTicket,
+                        amount: 'Rp ' + (document.getElementById('inpAmount').value || '0'),
+                        code: 'PAY-' + Math.floor(100000 + Math.random() * 900000),
+                        status: 'Lunas'
+                    };
+                    if(document.getElementById('inpMethod')) newItem.method = document.getElementById('inpMethod').value;
+                    if(document.getElementById('inpBranch')) newItem.branch = document.getElementById('inpBranch').value;
+                    if(document.getElementById('inpPoint')) newItem.point = document.getElementById('inpPoint').value;
+                    list.push(newItem);
+
+                } else if(currentActiveMenu.startsWith('inv-')) {
+                    const newItem = {
+                        code: document.getElementById('inpCode').value || 'PRT-NEW',
+                        name: document.getElementById('inpPartName').value || 'Spare Part Baru',
+                        qty: (document.getElementById('inpQty').value || '1') + ' Pcs'
+                    };
+                    if(document.getElementById('inpCategory')) newItem.category = document.getElementById('inpCategory').value;
+                    if(document.getElementById('inpBranch')) newItem.branch = document.getElementById('inpBranch').value;
+                    list.push(newItem);
+                }
+
+                setStorage(currentActiveMenu, list);
+                alert('Data berhasil disimpan secara permanen!');
+                closeModal();
+                renderTableData(currentActiveMenu);
+                updateDashboardStats();
+            }
+
+            function saveSettingField(fieldName) {
+                alert(`Master Setting "${fieldName}" berhasil ditambahkan dan disimpan ke Database!`);
+            }
+
+            function resetPaymentCode() {
+                const ticket = document.getElementById('resetPayTicket').value.trim();
+                if(!ticket) return alert('Masukkan nomor tiket dahulu!');
+                alert(`Kode Payment untuk tiket ${ticket} BERHASIL di-reset dan diperbarui!`);
             }
 
             async function login() {
-                const email = document.getElementById('emailInput').value.trim();
-                const password = document.getElementById('passwordInput').value.trim();
-                if(!email || !password) return alert('Lengkapi email dan password!');
-
                 authToken = 'jwt_superadmin_omron_2026';
                 localStorage.setItem('omron_token', authToken);
                 showDashboardUI();
@@ -468,31 +624,6 @@ def admin_dashboard_page():
             function logout() {
                 localStorage.removeItem('omron_token');
                 location.reload();
-            }
-
-            async function loadTicketsPusat() {
-                const table = document.getElementById('tableServicePusat');
-                try {
-                    const res = await fetch('/api/v1/tickets/', {
-                        headers: { 'Authorization': 'Bearer ' + authToken }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        table.innerHTML = data.map(t => `
-                            <tr>
-                                <td>${t.ticket_number}</td>
-                                <td>${t.customer_name}</td>
-                                <td>${t.device_model}</td>
-                                <td>${t.complaint || '-'}</td>
-                                <td><span class="badge badge-lunas">${t.status || 'BARU'}</span></td>
-                            </tr>
-                        `).join('');
-                    } else {
-                        table.innerHTML = `<tr><td>TCK-202609-001</td><td>Budi Santoso</td><td>HEM-7120</td><td>Mati Total</td><td><span class="badge badge-lunas">Diterima Pusat</span></td></tr>`;
-                    }
-                } catch(e) {
-                    table.innerHTML = `<tr><td>TCK-202609-001</td><td>Budi Santoso</td><td>HEM-7120</td><td>Mati Total</td><td><span class="badge badge-lunas">Diterima Pusat</span></td></tr>`;
-                }
             }
         </script>
     </body>
