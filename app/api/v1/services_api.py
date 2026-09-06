@@ -1,7 +1,7 @@
 import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import create_engine, desc, text
+from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -11,25 +11,32 @@ from app.models.schema import Base, ServiceTicket
 
 logger = logging.getLogger("uvicorn.error")
 
+# Ambil DATABASE_URL dari Environment Variable (Neon.tech / Railway PostgreSQL)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./local_crm.db")
 
+# Format prefix PostgreSQL dari postgres:// menjadi postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Pengaturan engine database
+if "sqlite" in DATABASE_URL:
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,      # Menjaga koneksi PostgreSQL tetap hidup
+        pool_recycle=300,        # Mencegah disconnect timeout
+        pool_size=10,
+        max_overflow=20
+    )
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Inisialisasi tabel jika belum ada
 try:
-    if "sqlite" in DATABASE_URL:
-        engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-    else:
-        engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
-    
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
 except Exception as e:
-    logger.error(f"Gagal koneksi PostgreSQL, beralih ke SQLite lokal: {str(e)}")
-    DATABASE_URL = "sqlite:///./local_crm.db"
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
+    logger.error(f"Error saat inisialisasi skema tabel: {str(e)}")
 
 router = APIRouter(prefix="/api/v1/db", tags=["Database CRUD"])
 
