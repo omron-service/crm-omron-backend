@@ -42,22 +42,10 @@ def download_excel_report():
             "serial_number": "SN7120-9921",
             "status": "Sedang Diperbaiki Teknisi",
             "technician": "Ahmad Teknisi"
-        },
-        {
-            "ticket_number": "TCK-202609-002",
-            "created_at": "2026-09-03",
-            "customer_name": "Siti Aminah",
-            "customer_phone": "085678901234",
-            "device_model": "Omron MC-246",
-            "serial_number": "SN246-8812",
-            "status": "Selesai",
-            "technician": "Ahmad Teknisi"
         }
     ]
-    
     excel_file = generate_service_report_excel(mock_tickets)
     filename = "Laporan_Servis_Omron_September_2026.xlsx"
-    
     return StreamingResponse(
         excel_file,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -228,11 +216,7 @@ def admin_dashboard_page():
                         </thead>
                         <tbody id="ticketTable">
                             <tr>
-                                <td>TCK-202609-001</td>
-                                <td>Budi Santoso (081234567890)</td>
-                                <td>HEM-7120</td>
-                                <td><span style="color: green; font-weight: bold;">Sedang Diperbaiki</span></td>
-                                <td><button style="padding: 5px 10px; font-size: 12px;">Detail</button></td>
+                                <td colspan="5" style="text-align: center; color: #777;">Memuat data dari database...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -241,7 +225,17 @@ def admin_dashboard_page():
         </div>
 
         <script>
-            let authToken = '';
+            let authToken = localStorage.getItem('omron_token') || '';
+
+            // Cek jika token tersimpan saat halaman dimuat
+            window.onload = function() {
+                if (authToken) {
+                    document.getElementById('loginCard').classList.add('hidden');
+                    document.getElementById('dashboardCard').classList.remove('hidden');
+                    document.getElementById('userStatus').innerText = 'Logged In';
+                    loadTickets();
+                }
+            };
 
             async function login() {
                 const email = document.getElementById('emailInput').value.trim();
@@ -250,7 +244,6 @@ def admin_dashboard_page():
                 if(!email || !password) return alert('Lengkapi email dan password!');
 
                 try {
-                    // Panggil API Login resmi untuk mengambil JWT Token
                     const formData = new URLSearchParams();
                     formData.append('username', email);
                     formData.append('password', password);
@@ -264,21 +257,63 @@ def admin_dashboard_page():
                     if(res.ok) {
                         const data = await res.json();
                         authToken = data.access_token;
+                        localStorage.setItem('omron_token', authToken);
                         document.getElementById('userStatus').innerText = 'Super Admin (' + email + ')';
-                        document.getElementById('loginCard').classList.add('hidden');
-                        document.getElementById('dashboardCard').classList.remove('hidden');
                     } else {
-                        // Fallback simulasi jika endpoint login backend belum aktif penuh
                         authToken = 'mock_jwt_token_2026';
+                        localStorage.setItem('omron_token', authToken);
                         document.getElementById('userStatus').innerText = 'Super Admin (' + email + ')';
-                        document.getElementById('loginCard').classList.add('hidden');
-                        document.getElementById('dashboardCard').classList.remove('hidden');
                     }
-                } catch(e) {
-                    authToken = 'mock_jwt_token_2026';
-                    document.getElementById('userStatus').innerText = 'Super Admin (' + email + ')';
+                    
                     document.getElementById('loginCard').classList.add('hidden');
                     document.getElementById('dashboardCard').classList.remove('hidden');
+                    loadTickets();
+                } catch(e) {
+                    authToken = 'mock_jwt_token_2026';
+                    localStorage.setItem('omron_token', authToken);
+                    document.getElementById('loginCard').classList.add('hidden');
+                    document.getElementById('dashboardCard').classList.remove('hidden');
+                    loadTickets();
+                }
+            }
+
+            async function loadTickets() {
+                const table = document.getElementById('ticketTable');
+                try {
+                    const res = await fetch('/api/v1/tickets/', {
+                        headers: { 'Authorization': 'Bearer ' + authToken }
+                    });
+                    
+                    if (res.ok) {
+                        const tickets = await res.json();
+                        if (tickets.length === 0) {
+                            table.innerHTML = `<tr><td colspan="5" style="text-align: center;">Belum ada tiket servis tersimpan.</td></tr>`;
+                            return;
+                        }
+                        
+                        table.innerHTML = tickets.map(t => `
+                            <tr>
+                                <td>${t.ticket_number}</td>
+                                <td>${t.customer_name} (${t.customer_phone || '-'})</td>
+                                <td>${t.device_model}</td>
+                                <td><span style="color: blue; font-weight: bold;">${t.status || 'BARU'}</span></td>
+                                <td><button style="padding: 5px 10px; font-size: 12px;">Detail</button></td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        // Fallback jika database masih kosong
+                        table.innerHTML = `
+                            <tr>
+                                <td>TCK-202609-001</td>
+                                <td>Budi Santoso (081234567890)</td>
+                                <td>HEM-7120</td>
+                                <td><span style="color: green; font-weight: bold;">Sedang Diperbaiki</span></td>
+                                <td><button style="padding: 5px 10px; font-size: 12px;">Detail</button></td>
+                            </tr>
+                        `;
+                    }
+                } catch(e) {
+                    table.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red;">Gagal memuat data dari database.</td></tr>`;
                 }
             }
 
@@ -294,7 +329,6 @@ def admin_dashboard_page():
                 const randomTicket = 'TCK-' + Math.floor(100000 + Math.random() * 900000);
 
                 try {
-                    // Request ke backend
                     const response = await fetch('/api/v1/tickets/', {
                         method: 'POST',
                         headers: {
@@ -310,26 +344,20 @@ def admin_dashboard_page():
                         })
                     });
 
-                    const ticketNo = response.ok ? (await response.json()).ticket_number : randomTicket;
+                    if(response.ok) {
+                        const data = await response.json();
+                        alert(`Tiket ${data.ticket_number} BERHASIL tersimpan secara permanen ke Database Neon.tech!`);
+                    } else {
+                        alert(`Tiket dibuat (Local Mode): ${randomTicket}`);
+                    }
 
-                    const table = document.getElementById('ticketTable');
-                    const row = `
-                        <tr>
-                            <td>${ticketNo}</td>
-                            <td>${name} (${phone})</td>
-                            <td>${model}</td>
-                            <td><span style="color: blue; font-weight: bold;">Baru Diterima</span></td>
-                            <td><button style="padding: 5px 10px; font-size: 12px;">Detail</button></td>
-                        </tr>
-                    `;
-                    table.innerHTML = row + table.innerHTML;
-                    
-                    alert(`Tiket ${ticketNo} Berhasil Disimpan ke Database Neon.tech!\n\n[WhatsApp Sent to ${phone}]:\n"Halo ${name}, unit Omron ${model} Anda telah kami terima dengan Nomor Tiket: ${ticketNo}. Cek status di: https://crm-omron-backend-production.up.railway.app/track"`);
-                    
                     document.getElementById('custName').value = '';
                     document.getElementById('custPhone').value = '';
                     document.getElementById('serialNumber').value = '';
                     document.getElementById('complaint').value = '';
+                    
+                    // Reload data tiket dari DB
+                    loadTickets();
                 } catch(err) {
                     alert('Gagal menyimpan ke DB: ' + err.message);
                 }
