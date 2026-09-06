@@ -44,14 +44,30 @@ def get_db():
         db.close()
 
 class TicketCreate(BaseModel):
-    service_type: Optional[str] = "pusat"
+    service_type: str  # wajib "pusat", "cabang", atau "pickup"
     customer_name: str
     customer_phone: str
+    customer_phone_2: Optional[str] = None
+    customer_address: Optional[str] = None
+    province: Optional[str] = None
+    city: Optional[str] = None
     branch_or_point: Optional[str] = "-"
+    
+    product_category: Optional[str] = None
     device_model: Optional[str] = "HEM-7120"
     serial_number: Optional[str] = "-"
+    accessories: Optional[str] = None
     warranty_status: Optional[str] = "Out of Warranty"
+    warranty_period: Optional[str] = None
+    product_origin: Optional[str] = None
+
     complaint: Optional[str] = "-"
+    technician_analysis: Optional[str] = None
+    symptom_code: Optional[str] = None
+    leadtime_days: Optional[int] = 1
+    notes: Optional[str] = None
+    remarks: Optional[str] = None
+    status: Optional[str] = "Diproses"
 
 class TicketPriceUpdate(BaseModel):
     ticket_number: str
@@ -66,11 +82,12 @@ def get_all_tickets(db: Session = Depends(get_db)):
         return []
 
 @router.get("/tickets/{service_type}")
-def get_tickets(service_type: str, db: Session = Depends(get_db)):
+def get_tickets_by_location(service_type: str, db: Session = Depends(get_db)):
+    srv = service_type.lower().strip()
     try:
-        srv = service_type.lower().strip()
-        # Filter strictly berdasarkan service_type tanpa fallback
-        return db.query(ServiceTicket).filter(func.lower(ServiceTicket.service_type) == srv).order_by(desc(ServiceTicket.id)).all()
+        # Isolasi Murni: Hanya mengambil data yang match persis dengan lokasi tersebut
+        tickets = db.query(ServiceTicket).filter(func.lower(ServiceTicket.service_type) == srv).order_by(desc(ServiceTicket.id)).all()
+        return tickets
     except Exception as e:
         logger.error(f"Error fetching tickets for {service_type}: {str(e)}")
         return []
@@ -78,10 +95,11 @@ def get_tickets(service_type: str, db: Session = Depends(get_db)):
 @router.post("/tickets/")
 def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
     try:
-        srv_type = (ticket.service_type or "pusat").lower().strip()
+        srv_type = ticket.service_type.lower().strip()
         if srv_type not in ["pusat", "cabang", "pickup"]:
             srv_type = "pusat"
 
+        # Prefix otomatis sesuai jenis lokasi input
         prefix_code = "JKT"
         if srv_type == "cabang":
             prefix_code = "CBG"
@@ -91,21 +109,35 @@ def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
         year_suffix = datetime.utcnow().strftime("%y")
         prefix_full = f"{prefix_code}-{year_suffix}"
 
-        # Hitung urutan nomor tiket khusus per service_type
+        # Hitung urutan khusus di lokasi yang sama
         count_specific = db.query(ServiceTicket).filter(func.lower(ServiceTicket.service_type) == srv_type).count() + 1
         ticket_num = f"{prefix_full}{count_specific:05d}"
 
         db_ticket = ServiceTicket(
             ticket_number=ticket_num,
             service_type=srv_type,
+            created_by_location=f"LOCATION_{srv_type.upper()}",
             customer_name=ticket.customer_name,
             customer_phone=ticket.customer_phone,
-            branch_or_point=ticket.branch_or_point if ticket.branch_or_point else "-",
-            device_model=ticket.device_model if ticket.device_model else "HEM-7120",
-            serial_number=ticket.serial_number if ticket.serial_number else "-",
-            warranty_status=ticket.warranty_status if ticket.warranty_status else "Out of Warranty",
-            complaint=ticket.complaint if ticket.complaint else "-",
-            status="Diproses"
+            customer_phone_2=ticket.customer_phone_2,
+            customer_address=ticket.customer_address,
+            province=ticket.province,
+            city=ticket.city,
+            branch_or_point=ticket.branch_or_point or "-",
+            product_category=ticket.product_category,
+            device_model=ticket.device_model or "HEM-7120",
+            serial_number=ticket.serial_number or "-",
+            accessories=ticket.accessories,
+            warranty_status=ticket.warranty_status or "Out of Warranty",
+            warranty_period=ticket.warranty_period,
+            product_origin=ticket.product_origin,
+            complaint=ticket.complaint or "-",
+            technician_analysis=ticket.technician_analysis,
+            symptom_code=ticket.symptom_code,
+            leadtime_days=ticket.leadtime_days or 1,
+            notes=ticket.notes,
+            remarks=ticket.remarks,
+            status=ticket.status or "Diproses"
         )
         db.add(db_ticket)
         db.commit()
