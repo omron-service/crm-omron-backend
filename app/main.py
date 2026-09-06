@@ -12,9 +12,8 @@ app = FastAPI(title="CRM Omron Healthcare API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Register Router Modul
 app.include_router(mutations.router)
-app.include_router(services_api.router)  # Router Database PostgreSQL Neon.tech
+app.include_router(services_api.router)
 
 
 @app.get("/")
@@ -28,7 +27,7 @@ def track_ticket_api(request: Request, ticket_number: str):
     return {
         "ticket_number": ticket_number,
         "device_model": "Omron HEM-7120",
-        "status": "Sedang Diperbaiki Teknisi",
+        "status": "Diproses",
         "current_location": "Service Center Pusat (Jakarta)",
     }
 
@@ -37,18 +36,18 @@ def track_ticket_api(request: Request, ticket_number: str):
 def download_excel_report():
     mock_tickets = [
         {
-            "ticket_number": "TCK-202609-001",
+            "ticket_number": "JKT-2600001",
             "created_at": "2026-09-01",
             "customer_name": "Budi Santoso",
             "customer_phone": "081234567890",
-            "device_model": "Omron HEM-7120",
+            "device_model": "HEM-7120",
             "serial_number": "SN7120-9921",
-            "status": "Sedang Diperbaiki Teknisi",
+            "status": "Diproses",
             "technician": "Ahmad Teknisi",
         }
     ]
     excel_file = generate_service_report_excel(mock_tickets)
-    filename = "Laporan_Servis_Omron_September_2026.xlsx"
+    filename = "Laporan_Servis_Omron_2026.xlsx"
     return StreamingResponse(
         excel_file,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -81,7 +80,7 @@ def track_ticket_page():
         <div class="card">
             <div class="logo">OMRON</div>
             <div class="subtitle">Layanan Pelacakan Servis Perangkat</div>
-            <input type="text" id="ticketInput" placeholder="Masukkan Nomor Tiket (cth: TCK-202609-001)">
+            <input type="text" id="ticketInput" placeholder="Masukkan Nomor Tiket (cth: JKT-2600001)">
             <button onclick="trackTicket()">Lacak Status Perangkat</button>
             <div id="resultBox" class="result"></div>
         </div>
@@ -152,9 +151,10 @@ def admin_dashboard_page():
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { border: 1px solid #ddd; padding: 9px 12px; text-align: left; font-size: 13px; }
             th { background: #f8f9fa; color: #444; }
-            .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
-            .form-group { margin-bottom: 10px; }
-            label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 12px; color: #555; }
+            .form-section-title { font-weight: bold; color: #0056b3; background: #e9ecef; padding: 8px 12px; border-radius: 4px; margin: 15px 0 10px 0; font-size: 14px; }
+            .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 10px; }
+            .form-group { margin-bottom: 8px; }
+            label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px; color: #444; }
             input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
             .btn { background: #0056b3; color: white; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
             .btn:hover { background: #004085; }
@@ -167,10 +167,12 @@ def admin_dashboard_page():
             .badge-pending { background: #fff3cd; color: #856404; }
 
             .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
-            .modal-content { background: white; width: 100%; max-width: 600px; border-radius: 8px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+            .modal-content { background: white; width: 95%; max-width: 900px; max-height: 90vh; overflow-y: auto; border-radius: 8px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
             .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
             .modal-header h3 { margin: 0; color: #0056b3; font-size: 16px; }
             .close-btn { font-size: 20px; cursor: pointer; border: none; background: none; font-weight: bold; color: #888; }
+            .required { color: red; }
+            .sparepart-box { background: #f8f9fa; border: 1px dashed #ccc; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
         </style>
     </head>
     <body>
@@ -248,7 +250,7 @@ def admin_dashboard_page():
                 <!-- 1. DASHBOARD -->
                 <div id="tab-dashboard" class="tab-content hidden">
                     <div class="card">
-                        <h2>Ringkasan Dashboard Utama (Database Neon.tech)</h2>
+                        <h2>Ringkasan Dashboard Utama</h2>
                         <div class="form-grid">
                             <div style="background:#e3f2fd; padding:15px; border-radius:6px; text-align:center;">
                                 <h3 id="statPusat" style="margin:0; color:#0d47a1;">0</h3>
@@ -274,7 +276,7 @@ def admin_dashboard_page():
                             <button class="btn btn-success" onclick="openModal('service-pusat')">+ Tambah Service Pusat</button>
                         </div>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Pelanggan</th><th>No. HP</th><th>Model Alat</th><th>Keluhan</th><th>Status</th></tr></thead>
+                            <thead><tr><th>No. Tiket</th><th>Pemilik</th><th>No. HP/WA 1</th><th>Model Alat</th><th>Keluhan</th><th>Repair Status</th></tr></thead>
                             <tbody id="tableServicePusat"></tbody>
                         </table>
                     </div>
@@ -287,7 +289,7 @@ def admin_dashboard_page():
                             <button class="btn btn-success" onclick="openModal('service-cabang')">+ Tambah Service Cabang</button>
                         </div>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Pelanggan</th><th>Model Alat</th><th>Status</th></tr></thead>
+                            <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Pemilik</th><th>Model Alat</th><th>Repair Status</th></tr></thead>
                             <tbody id="tableServiceCabang"></tbody>
                         </table>
                     </div>
@@ -300,7 +302,7 @@ def admin_dashboard_page():
                             <button class="btn btn-success" onclick="openModal('service-pickup')">+ Tambah Service Pickup</button>
                         </div>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Pickup Point</th><th>Pelanggan</th><th>Status Kurir</th></tr></thead>
+                            <thead><tr><th>No. Tiket</th><th>Pickup Point</th><th>Pemilik</th><th>Status Kurir</th></tr></thead>
                             <tbody id="tableServicePickup"></tbody>
                         </table>
                     </div>
@@ -395,7 +397,7 @@ def admin_dashboard_page():
                         <h2>5b. Setting Field Status Payment & Kode Payment</h2>
                         <div class="form-group">
                             <label>Reset Kode Payment</label>
-                            <input type="text" id="resetTicket" placeholder="TCK-123456" style="max-width: 300px;">
+                            <input type="text" id="resetTicket" placeholder="JKT-2600001" style="max-width: 300px;">
                             <button class="btn btn-danger" style="margin-top:5px;" onclick="alert('Kode Payment Berhasil Direset!')">Reset Kode</button>
                         </div>
                     </div>
@@ -404,17 +406,17 @@ def admin_dashboard_page():
             </div>
         </main>
 
-        <!-- MODAL DYNAMIC FORM -->
+        <!-- MODAL FORM SERVICE BARU & LAINNYA -->
         <div id="modalForm" class="modal-overlay hidden">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3 id="modalTitle">Form Tambah Data</h3>
+                    <h3 id="modalTitle">Form Tambah Tiket Servis Baru</h3>
                     <button class="close-btn" onclick="closeModal()">&times;</button>
                 </div>
                 <div id="modalBody"></div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                     <button class="btn" style="background:#6c757d;" onclick="closeModal()">Batal</button>
-                    <button class="btn btn-success" onclick="saveModalData()">Simpan Data Ke Neon.tech</button>
+                    <button class="btn btn-success" onclick="saveModalData()">Simpan Tiket Service</button>
                 </div>
             </div>
         </div>
@@ -422,6 +424,37 @@ def admin_dashboard_page():
         <script>
             let authToken = localStorage.getItem('omron_token') || '';
             let currentActiveMenu = '';
+
+            // Data Kota berdasarkan Provinsi
+            const cityData = {
+                "DKI Jakarta": ["Jakarta Pusat", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Jakarta Utara"],
+                "Jawa Barat": ["Bandung", "Bekasi", "Bogor", "Depok", "Cirebon", "Sukabumi"],
+                "Banten": ["Tangerang", "Tangerang Selatan", "Serang", "Cilegon"],
+                "Jawa Tengah": ["Semarang", "Solo", "Magelang", "Tegal", "Purwokerto"],
+                "DI Yogyakarta": ["Yogyakarta", "Sleman", "Bantul"],
+                "Jawa Timur": ["Surabaya", "Malang", "Sidoarjo", "Gresik", "Kediri"],
+                "Bali": ["Denpasar", "Badung", "Gianyar"],
+                "Sumatera Utara": ["Medan", "Pematangsiantar", "Deli Serdang"],
+                "Sumatera Selatan": ["Palembang", "Prabumulih"],
+                "Kalimantan Timur": ["Balikpapan", "Samarinda"],
+                "Sulawesi Selatan": ["Makassar", "Gowa"],
+                "Lainnya": ["Lainnya / Luar Daerah"]
+            };
+
+            // Data Model berdasarkan Produk Kategori
+            const modelData = {
+                "Arm BPM": ["HEM-7120", "HEM-7156", "HEM-7156T", "HEM-7361T", "HEM-7130", "HEM-7280T"],
+                "Wrist BPM": ["HEM-6161", "HEM-6181", "HEM-6232T"],
+                "NEB-Comp": ["NE-C28", "NE-C101", "NE-C803"],
+                "NEB-Mesh": ["NE-U100"],
+                "NEB-Ultra": ["NE-U780"],
+                "BCM": ["HBF-212", "HBF-214", "HBF-224", "HBF-375"],
+                "DWS": ["HN-289", "HN-300T2"],
+                "Thermo": ["MC-246", "MC-343F", "MC-720"],
+                "TENS": ["HV-F013", "HV-F021", "HV-F128"],
+                "MEDICAL": ["HBP-1320", "HBP-1120"],
+                "Others": ["Ketik Manual / Lainnya"]
+            };
 
             window.onload = function() {
                 if (authToken) {
@@ -479,21 +512,15 @@ def admin_dashboard_page():
                         const data = await res.json();
                         
                         if(menu === 'service-pusat') {
-                            document.getElementById('tableServicePusat').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.customer_name}</td><td>${d.customer_phone}</td><td>${d.device_model}</td><td>${d.complaint||'-'}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="6" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                            document.getElementById('tableServicePusat').innerHTML = data.length ? data.map(d => `<tr><td><strong>${d.ticket_number}</strong></td><td>${d.customer_name}</td><td>${d.customer_phone}</td><td>${d.device_model}</td><td>${d.complaint||'-'}</td><td><span class="badge badge-lunas">${d.status||'Diproses'}</span></td></tr>`).join('') : `<tr><td colspan="6" style="text-align:center;">Belum ada data di DB</td></tr>`;
                         } else if(menu === 'service-cabang') {
-                            document.getElementById('tableServiceCabang').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td>${d.device_model}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                            document.getElementById('tableServiceCabang').innerHTML = data.length ? data.map(d => `<tr><td><strong>${d.ticket_number}</strong></td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td>${d.device_model}</td><td><span class="badge badge-pending">${d.status||'Diproses'}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
                         } else if(menu === 'service-pickup') {
-                            document.getElementById('tableServicePickup').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                            document.getElementById('tableServicePickup').innerHTML = data.length ? data.map(d => `<tr><td><strong>${d.ticket_number}</strong></td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td><span class="badge badge-lunas">${d.status||'Diterima'}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
                         } else if(menu === 'payment-pusat') {
                             document.getElementById('tablePaymentPusat').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td>${d.payment_method||'-'}</td><td>${d.payment_code}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        } else if(menu === 'payment-cabang') {
-                            document.getElementById('tablePaymentCabang').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td>${d.payment_code}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        } else if(menu === 'payment-pickup') {
-                            document.getElementById('tablePaymentPickup').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
                         } else if(menu === 'inv-pusat-list') {
                             document.getElementById('tableInvPusatList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.category||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        } else if(menu === 'inv-cabang-list') {
-                            document.getElementById('tableInvCabangList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.branch||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
                         }
                     }
                 } catch(e) {
@@ -501,31 +528,230 @@ def admin_dashboard_page():
                 }
             }
 
+            function updateCityDropdown() {
+                const prov = document.getElementById('inpProvinsi').value;
+                const citySelect = document.getElementById('inpKota');
+                citySelect.innerHTML = '<option value="">— pilih kota —</option>';
+                if(cityData[prov]) {
+                    cityData[prov].forEach(c => {
+                        citySelect.innerHTML += `<option value="${c}">${c}</option>`;
+                    });
+                }
+            }
+
+            function updateModelDropdown() {
+                const cat = document.getElementById('inpCategory').value;
+                const modelSelect = document.getElementById('inpModel');
+                modelSelect.innerHTML = '<option value="">— pilih model —</option>';
+                if(modelData[cat]) {
+                    modelData[cat].forEach(m => {
+                        modelSelect.innerHTML += `<option value="${m}">${m}</option>`;
+                    });
+                }
+            }
+
             function openModal(menu) {
                 currentActiveMenu = menu;
                 const modalBody = document.getElementById('modalBody');
-                document.getElementById('modalTitle').innerText = 'Tambah Data: ' + menu.toUpperCase();
+                document.getElementById('modalTitle').innerText = 'Tambah Tiket Service Baru (' + menu.toUpperCase() + ')';
 
                 if(menu.startsWith('service-')) {
                     modalBody.innerHTML = `
-                        <div class="form-grid">
-                            <div class="form-group"><label>Nama Pelanggan</label><input id="inpName" placeholder="Budi Santoso"></div>
-                            <div class="form-group"><label>No. HP</label><input id="inpPhone" placeholder="081234567890"></div>
-                            ${menu === 'service-cabang' ? '<div class="form-group"><label>Nama Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
-                            ${menu === 'service-pickup' ? '<div class="form-group"><label>Pickup Point</label><input id="inpPoint" placeholder="Apotek K-24"></div>' : ''}
-                            <div class="form-group"><label>Model Alat</label><input id="inpModel" placeholder="HEM-7120"></div>
-                            <div class="form-group"><label>Serial Number (SN)</label><input id="inpSN" placeholder="SN2026xxxx"></div>
+                        <!-- INFORMASI NOTIFIKASI NOMOR TIKET -->
+                        <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
+                            ℹ️ <strong>Nomor Tiket Otomatis:</strong> Format <code>XXX-2600001</code> akan dibuatkan secara otomatis oleh sistem setelah tombol disimpan.
                         </div>
-                        <div class="form-group"><label>Keluhan / Kerusakan</label><textarea id="inpComplaint" rows="2"></textarea></div>
+
+                        <!-- 1. DATA PELANGGAN -->
+                        <div class="form-section-title">1. Data Pelanggan</div>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Nama Pemilik <span class="required">*</span></label><input id="inpName" placeholder="Contoh: Budi Santoso"></div>
+                            <div class="form-group"><label>No. HP / WhatsApp 1 <span class="required">*</span></label><input id="inpPhone1" placeholder="081234567890"></div>
+                            <div class="form-group"><label>Nama Instansi</label><input id="inpInstansi" placeholder="PT / Rumah Sakit / Klinik"></div>
+                            <div class="form-group"><label>No. HP / WhatsApp 2</label><input id="inpPhone2" placeholder="081987654321"></div>
+                        </div>
+                        <div class="form-group"><label>Alamat Pemilik</label><textarea id="inpAddress" rows="2" placeholder="Alamat lengkap..."></textarea></div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Provinsi</label>
+                                <select id="inpProvinsi" onchange="updateCityDropdown()">
+                                    <option value="">— pilih provinsi —</option>
+                                    <option value="DKI Jakarta">DKI Jakarta</option>
+                                    <option value="Jawa Barat">Jawa Barat</option>
+                                    <option value="Banten">Banten</option>
+                                    <option value="Jawa Tengah">Jawa Tengah</option>
+                                    <option value="DI Yogyakarta">DI Yogyakarta</option>
+                                    <option value="Jawa Timur">Jawa Timur</option>
+                                    <option value="Bali">Bali</option>
+                                    <option value="Sumatera Utara">Sumatera Utara</option>
+                                    <option value="Sumatera Selatan">Sumatera Selatan</option>
+                                    <option value="Kalimantan Timur">Kalimantan Timur</option>
+                                    <option value="Sulawesi Selatan">Sulawesi Selatan</option>
+                                    <option value="Lainnya">Lainnya</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Kota (pilih provinsi dulu)</label>
+                                <select id="inpKota">
+                                    <option value="">— pilih kota —</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label>Tanggal Alat Diterima</label><input type="date" id="inpDateReceived"></div>
+                            <div class="form-group"><label>Tanggal Alat Selesai</label><input type="date" id="inpDateFinished"></div>
+                        </div>
+
+                        <!-- 2. DATA PRODUK -->
+                        <div class="form-section-title">2. Data Produk</div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Produk Kategori</label>
+                                <select id="inpCategory" onchange="updateModelDropdown()">
+                                    <option value="">— pilih kategori —</option>
+                                    <option value="Arm BPM">Arm BPM</option>
+                                    <option value="Wrist BPM">Wrist BPM</option>
+                                    <option value="NEB-Comp">NEB-Comp</option>
+                                    <option value="NEB-Mesh">NEB-Mesh</option>
+                                    <option value="NEB-Ultra">NEB-Ultra</option>
+                                    <option value="BCM">BCM</option>
+                                    <option value="DWS">DWS</option>
+                                    <option value="Thermo">Thermo</option>
+                                    <option value="TENS">TENS</option>
+                                    <option value="MEDICAL">MEDICAL</option>
+                                    <option value="Others">Others</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Model Alat (pilih kategori dulu)</label>
+                                <select id="inpModel">
+                                    <option value="">— pilih model —</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label>Serial No. Alat</label><input id="inpSN" placeholder="SN2026xxxx"></div>
+                            <div class="form-group"><label>Aksesoris</label><input id="inpAccessories" placeholder="Cuff, Adaptor, Bag"></div>
+                            <div class="form-group">
+                                <label>Status Garansi</label>
+                                <select id="inpGaransi">
+                                    <option value="">— pilih status —</option>
+                                    <option value="Under Warranty">Under Warranty</option>
+                                    <option value="Out of Warranty">Out of Warranty</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Warranty Period (tahun)</label>
+                                <select id="inpWarrantyPeriod">
+                                    <option value="">— pilih —</option>
+                                    <option value="1">1 Tahun</option>
+                                    <option value="2">2 Tahun</option>
+                                    <option value="3">3 Tahun</option>
+                                    <option value="4">4 Tahun</option>
+                                    <option value="5">5 Tahun</option>
+                                    <option value="6">6 Tahun</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Asal Produk</label>
+                                <select id="inpAsalProduk">
+                                    <option value="">— pilih asal —</option>
+                                    <option value="LEU">LEU</option>
+                                    <option value="EU-DRC">EU-DRC</option>
+                                    <option value="AMS/IDC">AMS/IDC</option>
+                                    <option value="APT/ TKO">APT/ TKO</option>
+                                    <option value="CV/ PT/ RS">CV/ PT/ RS</option>
+                                    <option value="ALPRO">ALPRO</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 3. DATA SERVIS -->
+                        <div class="form-section-title">3. Data Servis</div>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Keluhan Pelanggan</label><input id="inpKeluhan" placeholder="Keluhan perangkat"></div>
+                            <div class="form-group"><label>Analisa Teknisi</label><input id="inpAnalisa" placeholder="Hasil diagnosa"></div>
+                            <div class="form-group"><label>Symptom (kode)</label><input id="inpSymptom" placeholder="Contoh: ERR-01"></div>
+                            <div class="form-group"><label>Leadtime (hari)</label><input type="number" id="inpLeadtime" value="1"></div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Catatan</label><input id="inpCatatan" placeholder="Catatan tambahan..."></div>
+                            <div class="form-group">
+                                <label>Remarks</label>
+                                <select id="inpRemarks">
+                                    <option value="">— pilih remarks —</option>
+                                    <option value="Compliance Check/ Sensor Check">Compliance Check/ Sensor Check</option>
+                                    <option value="Repair">Repair</option>
+                                    <option value="Replace Product/ Claim">Replace Product/ Claim</option>
+                                    <option value="Unrepairable/ Return to Customer">Unrepairable/ Return to Customer</option>
+                                    <option value="Disagree with Service Fee">Disagree with Service Fee</option>
+                                    <option value="No Response">No Response</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Repair Status</label>
+                                <select id="inpRepairStatus">
+                                    <option value="Diterima Service Center">Diterima Service Center</option>
+                                    <option value="Diterima Pickup Center">Diterima Pickup Center</option>
+                                    <option value="Diproses">Diproses</option>
+                                    <option value="Selesai">Selesai</option>
+                                    <option value="Diambil Pemilik">Diambil Pemilik</option>
+                                    <option value="Dikirim via GED">Dikirim via GED</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 4. SPAREPART DIGUNAKAN -->
+                        <div class="form-section-title">4. Sparepart Digunakan</div>
+                        <small style="color:#666; display:block; margin-bottom:10px;">Mengisi kode/nama & jumlah di sini akan otomatis mengurangi stok sparepart di lokasi tiket ini.</small>
+
+                        <div class="sparepart-box">
+                            <strong>Sparepart 1</strong>
+                            <div class="form-grid">
+                                <input id="sp1_nama" placeholder="Nama Sparepart 1">
+                                <input id="sp1_kode" placeholder="Kode Sparepart">
+                                <input type="number" id="sp1_jumlah" placeholder="Jumlah">
+                                <input type="number" id="sp1_harga" placeholder="Harga (Rp)">
+                            </div>
+                        </div>
+
+                        <div class="sparepart-box">
+                            <strong>Sparepart 2</strong>
+                            <div class="form-grid">
+                                <input id="sp2_nama" placeholder="Nama Sparepart 2">
+                                <input id="sp2_kode" placeholder="Kode Sparepart">
+                                <input type="number" id="sp2_jumlah" placeholder="Jumlah">
+                                <input type="number" id="sp2_harga" placeholder="Harga (Rp)">
+                            </div>
+                        </div>
+
+                        <div class="sparepart-box">
+                            <strong>Sparepart 3</strong>
+                            <div class="form-grid">
+                                <input id="sp3_nama" placeholder="Nama Sparepart 3">
+                                <input id="sp3_kode" placeholder="Kode Sparepart">
+                                <input type="number" id="sp3_jumlah" placeholder="Jumlah">
+                                <input type="number" id="sp3_harga" placeholder="Harga (Rp)">
+                            </div>
+                        </div>
+
+                        <!-- 5. NOTIFIKASI -->
+                        <div class="form-section-title">5. Notifikasi</div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Kirim Notifikasi</label>
+                                <select id="inpNotifikasi">
+                                    <option value="">— pilih notifikasi —</option>
+                                    <option value="Tanda Terima (WhatsApp)">Tanda Terima Service (Kirim via WhatsApp)</option>
+                                    <option value="Tanda Terima (Email)">Tanda Terima Service (Kirim via Email)</option>
+                                    <option value="Service Report (WhatsApp)">Service Report (Kirim via WhatsApp)</option>
+                                    <option value="Service Report (Email)">Service Report (Kirim via Email)</option>
+                                </select>
+                            </div>
+                        </div>
                     `;
                 } else if(menu.startsWith('payment-')) {
                     modalBody.innerHTML = `
                         <div class="form-grid">
-                            <div class="form-group"><label>No. Tiket</label><input id="inpTicket" placeholder="TCK-123456"></div>
+                            <div class="form-group"><label>No. Tiket</label><input id="inpTicket" placeholder="JKT-2600001"></div>
                             <div class="form-group"><label>Total Biaya (Rp)</label><input id="inpAmount" type="number" placeholder="150000"></div>
-                            ${menu === 'payment-cabang' ? '<div class="form-group"><label>Nama Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
-                            ${menu === 'payment-pickup' ? '<div class="form-group"><label>Pickup Location</label><input id="inpPoint" placeholder="Apotek K-24"></div>' : ''}
-                            ${menu === 'payment-pusat' ? '<div class="form-group"><label>Metode Pembayaran</label><input id="inpMethod" placeholder="QRIS / Transfer"></div>' : ''}
+                            <div class="form-group"><label>Metode Pembayaran</label><input id="inpMethod" placeholder="QRIS / Transfer"></div>
                         </div>
                     `;
                 } else if(menu.startsWith('inv-')) {
@@ -533,8 +759,6 @@ def admin_dashboard_page():
                         <div class="form-grid">
                             <div class="form-group"><label>Kode Spare Part</label><input id="inpCode" placeholder="PRT-001"></div>
                             <div class="form-group"><label>Nama Spare Part</label><input id="inpPartName" placeholder="Cuff Tensimeter"></div>
-                            ${menu === 'inv-pusat-list' ? '<div class="form-group"><label>Kategori</label><input id="inpCategory" placeholder="Tensimeter"></div>' : ''}
-                            ${menu === 'inv-cabang-list' ? '<div class="form-group"><label>Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
                             <div class="form-group"><label>Jumlah (Qty)</label><input id="inpQty" type="number" placeholder="50"></div>
                         </div>
                     `;
@@ -551,34 +775,27 @@ def admin_dashboard_page():
                 let endpoint = '';
 
                 if (currentActiveMenu.startsWith('service-')) {
+                    const name = document.getElementById('inpName').value;
+                    const phone = document.getElementById('inpPhone1').value;
+                    if(!name || !phone) return alert('Nama Pemilik dan No. HP/WhatsApp 1 Wajib Diisi!');
+
                     endpoint = '/api/v1/db/tickets/';
                     payload = {
                         service_type: currentActiveMenu.replace('service-', ''),
-                        customer_name: document.getElementById('inpName').value || 'Tanpa Nama',
-                        customer_phone: document.getElementById('inpPhone').value || '-',
-                        branch_or_point: (document.getElementById('inpBranch') || document.getElementById('inpPoint') || {}).value || null,
+                        customer_name: name,
+                        customer_phone: phone,
+                        branch_or_point: document.getElementById('inpProvinsi').value || null,
                         device_model: document.getElementById('inpModel').value || 'HEM-7120',
                         serial_number: document.getElementById('inpSN').value || null,
-                        complaint: document.getElementById('inpComplaint').value || null
+                        complaint: document.getElementById('inpKeluhan').value || null
                     };
                 } else if (currentActiveMenu.startsWith('payment-')) {
                     endpoint = '/api/v1/db/payments/';
                     payload = {
                         service_type: currentActiveMenu.replace('payment-', ''),
-                        ticket_number: document.getElementById('inpTicket').value || 'TCK-MOCK',
+                        ticket_number: document.getElementById('inpTicket').value || 'JKT-2600001',
                         amount: parseFloat(document.getElementById('inpAmount').value || 0),
-                        payment_method: (document.getElementById('inpMethod') || {}).value || 'Transfer',
-                        branch_or_point: (document.getElementById('inpBranch') || document.getElementById('inpPoint') || {}).value || null
-                    };
-                } else if (currentActiveMenu.startsWith('inv-')) {
-                    endpoint = '/api/v1/db/inventory/';
-                    payload = {
-                        inventory_type: currentActiveMenu.includes('pusat') ? 'pusat' : 'cabang',
-                        part_code: document.getElementById('inpCode').value || 'PRT-' + Math.floor(Math.random()*1000),
-                        part_name: document.getElementById('inpPartName').value || 'Sparepart Baru',
-                        category: (document.getElementById('inpCategory') || {}).value || null,
-                        branch: (document.getElementById('inpBranch') || {}).value || null,
-                        qty: parseInt(document.getElementById('inpQty').value || 0)
+                        payment_method: document.getElementById('inpMethod').value || 'Transfer'
                     };
                 }
 
@@ -590,7 +807,8 @@ def admin_dashboard_page():
                     });
 
                     if (res.ok) {
-                        alert('BERHASIL! Data tersimpan di PostgreSQL Neon.tech!');
+                        const savedData = await res.json();
+                        alert(`BERHASIL! Tiket ${savedData.ticket_number || 'baru'} berhasil dibuat dan tersimpan ke Database Neon.tech!`);
                         closeModal();
                         renderTableData(currentActiveMenu);
                         updateDashboardStats();
