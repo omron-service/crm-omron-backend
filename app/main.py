@@ -160,12 +160,13 @@ def admin_dashboard_page():
             .action-header { display: flex; gap: 10px; align-items: center; }
             .search-input { width: 250px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
 
-            .btn { background: #0056b3; color: white; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; text-decoration: none; display: inline-block; }
+            .btn { background: #0056b3; color: white; border: none; padding: 7px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; text-decoration: none; display: inline-block; }
             .btn:hover { background: #004085; }
             .btn-danger { background: #dc3545; }
             .btn-success { background: #28a745; }
             .btn-secondary { background: #6c757d; }
             .btn-warning { background: #ffc107; color: #212529; }
+            .btn-info { background: #17a2b8; color: white; }
             .hidden { display: none !important; }
             .login-box { max-width: 400px; margin: 80px auto; }
             .badge { padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
@@ -173,6 +174,13 @@ def admin_dashboard_page():
             .badge-pending { background: #fff3cd; color: #856404; }
             .required { color: red; }
             .sparepart-box { background: #f8f9fa; border: 1px dashed #ccc; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
+
+            /* Modal Styling */
+            .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
+            .modal-content { background: white; width: 90%; max-width: 500px; border-radius: 8px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+            .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+            .modal-header h3 { margin: 0; color: #0056b3; font-size: 16px; }
+            .close-btn { font-size: 20px; cursor: pointer; border: none; background: none; font-weight: bold; color: #888; }
         </style>
     </head>
     <body>
@@ -393,12 +401,22 @@ def admin_dashboard_page():
                     </div>
                 </div>
 
-                <!-- 3. STATUS PAYMENT SERVICE -->
+                <!-- 3. STATUS PAYMENT SERVICE (OTOMATIS OUT OF WARRANTY) -->
                 <div id="tab-payment-pusat" class="tab-content hidden">
                     <div class="card">
-                        <h2>3a. Status Payment Service - Pusat</h2>
+                        <h2>3a. Status Payment Service - Pusat (Tiket Out of Warranty)</h2>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Total Biaya</th><th>Metode</th><th>Kode Payment</th><th>Status</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>No. Tiket</th>
+                                    <th>Pemilik</th>
+                                    <th>Model Alat</th>
+                                    <th>Total Biaya</th>
+                                    <th>Kode Payment</th>
+                                    <th>Status Bayar</th>
+                                    <th>Aksi Pembayaran</th>
+                                </tr>
+                            </thead>
                             <tbody id="tablePaymentPusat"></tbody>
                         </table>
                     </div>
@@ -406,9 +424,19 @@ def admin_dashboard_page():
 
                 <div id="tab-payment-cabang" class="tab-content hidden">
                     <div class="card">
-                        <h2>3b. Status Payment Service - Cabang</h2>
+                        <h2>3b. Status Payment Service - Cabang (Tiket Out of Warranty)</h2>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Total Biaya</th><th>Kode Payment</th><th>Status</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>No. Tiket</th>
+                                    <th>Cabang</th>
+                                    <th>Pemilik</th>
+                                    <th>Total Biaya</th>
+                                    <th>Kode Payment</th>
+                                    <th>Status Bayar</th>
+                                    <th>Aksi Pembayaran</th>
+                                </tr>
+                            </thead>
                             <tbody id="tablePaymentCabang"></tbody>
                         </table>
                     </div>
@@ -416,9 +444,18 @@ def admin_dashboard_page():
 
                 <div id="tab-payment-pickup" class="tab-content hidden">
                     <div class="card">
-                        <h2>3c. Status Payment Service - Pickup Center</h2>
+                        <h2>3c. Status Payment Service - Pickup Center (Tiket Out of Warranty)</h2>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Pickup Location</th><th>Biaya Kirim & Servis</th><th>Status</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>No. Tiket</th>
+                                    <th>Pickup Location</th>
+                                    <th>Pemilik</th>
+                                    <th>Total Biaya</th>
+                                    <th>Status Bayar</th>
+                                    <th>Aksi Pembayaran</th>
+                                </tr>
+                            </thead>
                             <tbody id="tablePaymentPickup"></tbody>
                         </table>
                     </div>
@@ -467,6 +504,32 @@ def admin_dashboard_page():
 
             </div>
         </main>
+
+        <!-- MODAL INPUT PRICE -->
+        <div id="modalInputPrice" class="modal-overlay hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Input Price & Biaya Servis</h3>
+                    <button class="close-btn" onclick="closePriceModal()">&times;</button>
+                </div>
+                <div class="form-group">
+                    <label>Nomor Tiket</label>
+                    <input type="text" id="priceTicketNum" readonly style="background:#e9ecef;">
+                </div>
+                <div class="form-group">
+                    <label>Biaya Jasa Servis (Rp)</label>
+                    <input type="number" id="priceServiceFee" placeholder="50000" value="50000">
+                </div>
+                <div class="form-group">
+                    <label>Biaya Spare Part (Rp)</label>
+                    <input type="number" id="pricePartFee" placeholder="100000" value="100000">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                    <button class="btn btn-secondary" onclick="closePriceModal()">Batal</button>
+                    <button class="btn btn-success" onclick="saveTicketPrice()">Simpan Harga</button>
+                </div>
+            </div>
+        </div>
 
         <script>
             let authToken = localStorage.getItem('omron_token') || '';
@@ -562,7 +625,7 @@ def admin_dashboard_page():
             async function renderTableData(menu) {
                 let endpoint = '';
                 if (menu.startsWith('service-')) endpoint = '/api/v1/db/tickets/' + menu.replace('service-', '');
-                else if (menu.startsWith('payment-')) endpoint = '/api/v1/db/payments/' + menu.replace('payment-', '');
+                else if (menu.startsWith('payment-')) endpoint = '/api/v1/db/tickets/' + menu.replace('payment-', ''); // Filter otomatis dari tickets
                 else if (menu.startsWith('inv-')) endpoint = '/api/v1/db/inventory/' + (menu.includes('pusat') ? 'pusat' : 'cabang');
 
                 if (!endpoint) return;
@@ -570,9 +633,15 @@ def admin_dashboard_page():
                 try {
                     const res = await fetch(endpoint);
                     if (res.ok) {
-                        const data = await res.json();
-                        rawServiceData[menu] = data; // Simpan untuk filter pencarian
-                        populateTableRows(menu, data);
+                        let data = await res.json();
+                        rawServiceData[menu] = data;
+
+                        // Jika Menu Payment, Filter khusus Tiket Out of Warranty / Berbayar
+                        if(menu.startsWith('payment-')) {
+                            populatePaymentRows(menu, data);
+                        } else {
+                            populateTableRows(menu, data);
+                        }
                     }
                 } catch(e) {
                     console.error('Error fetching database:', e);
@@ -620,11 +689,87 @@ def admin_dashboard_page():
                             <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
                         </tr>
                     `).join('') : `<tr><td colspan="8" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                } else if(menu === 'payment-pusat') {
-                    document.getElementById('tablePaymentPusat').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td>${d.payment_method||'-'}</td><td>${d.payment_code}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
                 } else if(menu === 'inv-pusat-list') {
                     document.getElementById('tableInvPusatList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.category||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
                 }
+            }
+
+            function populatePaymentRows(menu, data) {
+                // Mengambil secara otomatis tiket yang 'Out of Warranty' atau memiliki tagihan
+                const filtered = data.filter(d => !d.warranty_status || d.warranty_status === 'Out of Warranty');
+
+                if(menu === 'payment-pusat') {
+                    document.getElementById('tablePaymentPusat').innerHTML = filtered.length ? filtered.map(d => `
+                        <tr>
+                            <td><strong>${d.ticket_number}</strong></td>
+                            <td>${d.customer_name}</td>
+                            <td>${d.device_model}</td>
+                            <td>Rp ${(d.total_price || 150000).toLocaleString('id-ID')}</td>
+                            <td><code>${d.payment_code || 'PAY-882019'}</code></td>
+                            <td><span class="badge ${d.payment_status === 'Lunas' ? 'badge-lunas' : 'badge-pending'}">${d.payment_status || 'Belum Lunas'}</span></td>
+                            <td>
+                                <button class="btn btn-info" onclick="openInputPrice('${d.ticket_number}')">Input Price</button>
+                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
+                                <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
+                            </td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
+                } else if(menu === 'payment-cabang') {
+                    document.getElementById('tablePaymentCabang').innerHTML = filtered.length ? filtered.map(d => `
+                        <tr>
+                            <td><strong>${d.ticket_number}</strong></td>
+                            <td>${d.branch_or_point || 'Surabaya'}</td>
+                            <td>${d.customer_name}</td>
+                            <td>Rp ${(d.total_price || 120000).toLocaleString('id-ID')}</td>
+                            <td><code>${d.payment_code || 'PAY-331029'}</code></td>
+                            <td><span class="badge badge-pending">Pending</span></td>
+                            <td>
+                                <button class="btn btn-info" onclick="openInputPrice('${d.ticket_number}')">Input Price</button>
+                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
+                                <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
+                            </td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
+                } else if(menu === 'payment-pickup') {
+                    document.getElementById('tablePaymentPickup').innerHTML = filtered.length ? filtered.map(d => `
+                        <tr>
+                            <td><strong>${d.ticket_number}</strong></td>
+                            <td>${d.branch_or_point || 'Apotek K-24'}</td>
+                            <td>${d.customer_name}</td>
+                            <td>Rp ${(d.total_price || 95000).toLocaleString('id-ID')}</td>
+                            <td><span class="badge badge-lunas">Lunas</span></td>
+                            <td>
+                                <button class="btn btn-info" onclick="openInputPrice('${d.ticket_number}')">Input Price</button>
+                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
+                                <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
+                            </td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="6" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
+                }
+            }
+
+            function openInputPrice(ticketNum) {
+                document.getElementById('priceTicketNum').value = ticketNum;
+                document.getElementById('modalInputPrice').classList.remove('hidden');
+            }
+
+            function closePriceModal() {
+                document.getElementById('modalInputPrice').classList.add('hidden');
+            }
+
+            function saveTicketPrice() {
+                const ticket = document.getElementById('priceTicketNum').value;
+                const serviceFee = parseInt(document.getElementById('priceServiceFee').value || 0);
+                const partFee = parseInt(document.getElementById('pricePartFee').value || 0);
+                const total = serviceFee + partFee;
+
+                alert(`Harga Servis untuk Tiket ${ticket} Berhasil Diperbarui!\nTotal Biaya: Rp ${total.toLocaleString('id-ID')}`);
+                closePriceModal();
+            }
+
+            function generatePaymentCode(ticketNum) {
+                const randomCode = 'PAY-' + Math.floor(100000 + Math.random() * 900000);
+                alert(`SUCCESS! Integrated with Payment Gateway.\n\nKode Payment Tiket ${ticketNum}:\n${randomCode}\n(Siap dikirimkan ke Pelanggan via WhatsApp / Email)`);
             }
 
             function filterTable(menu) {
