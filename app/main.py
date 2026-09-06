@@ -600,41 +600,47 @@ def admin_dashboard_page():
 
             async function syncDatabase() {
                 try {
-                    await updateDashboardStats();
-                    const activeTab = document.querySelector('.tab-content:not(.hidden)');
-                    if(activeTab) {
-                        const tabId = activeTab.id.replace('tab-', '');
-                        await renderTableData(tabId);
+                    const res = await fetch('/api/v1/db/all-tickets');
+                    if (res.ok) {
+                        const allTickets = await res.json();
+                        rawServiceData['service-pusat'] = allTickets;
+                        rawServiceData['service-cabang'] = allTickets;
+                        rawServiceData['service-pickup'] = allTickets;
+                        rawServiceData['payment-pusat'] = allTickets;
+                        rawServiceData['payment-cabang'] = allTickets;
+                        rawServiceData['payment-pickup'] = allTickets;
+
+                        const activeTab = document.querySelector('.tab-content:not(.hidden)').id.replace('tab-', '');
+                        if(activeTab.startsWith('payment-')) {
+                            populatePaymentRows(activeTab, allTickets);
+                        } else {
+                            populateTableRows(activeTab, allTickets);
+                        }
+                        await updateDashboardStats();
+                        alert(`BERHASIL! ${allTickets.length} tiket ditemukan dan disinkronisasi dari Database Neon.tech.`);
                     }
-                    alert("Sinkronisasi Selesai! Seluruh tiket lama dan baru dari Database Neon.tech telah dimuat.");
                 } catch(e) {
-                    alert("Gagal koneksi ke database: " + e.message);
+                    alert("Gagal sinkronisasi data dari DB: " + e.message);
                 }
             }
 
             async function updateDashboardStats() {
                 try {
-                    const resPusat = await fetch('/api/v1/db/tickets/pusat');
-                    const resCabang = await fetch('/api/v1/db/tickets/cabang');
-                    const resPickup = await fetch('/api/v1/db/tickets/pickup');
-
-                    if(resPusat.ok) document.getElementById('statPusat').innerText = (await resPusat.json()).length;
-                    if(resCabang.ok) document.getElementById('statCabang').innerText = (await resCabang.json()).length;
-                    if(resPickup.ok) document.getElementById('statPickup').innerText = (await resPickup.json()).length;
+                    const res = await fetch('/api/v1/db/all-tickets');
+                    if(res.ok) {
+                        const data = await res.json();
+                        document.getElementById('statPusat').innerText = data.length;
+                        document.getElementById('statCabang').innerText = data.filter(d=>d.service_type==='cabang').length;
+                        document.getElementById('statPickup').innerText = data.filter(d=>d.service_type==='pickup').length;
+                    }
                 } catch(e) {}
             }
 
             async function renderTableData(menu) {
-                let endpoint = '';
-                if (menu.startsWith('service-')) {
-                    endpoint = '/api/v1/db/tickets/' + menu.replace('service-', '');
-                } else if (menu.startsWith('payment-')) {
-                    endpoint = '/api/v1/db/tickets/' + menu.replace('payment-', '');
-                } else if (menu.startsWith('inv-')) {
+                let endpoint = '/api/v1/db/all-tickets';
+                if (menu.startsWith('inv-')) {
                     endpoint = '/api/v1/db/inventory/' + (menu.includes('pusat') ? 'pusat' : 'cabang');
                 }
-
-                if (!endpoint) return;
 
                 try {
                     const res = await fetch(endpoint);
@@ -654,12 +660,16 @@ def admin_dashboard_page():
             }
 
             function populateTableRows(menu, data) {
-                if(menu === 'service-pusat') {
-                    document.getElementById('tableServicePusat').innerHTML = data.length ? data.map(d => `
+                if(menu === 'service-pusat' || menu === 'service-cabang' || menu === 'service-pickup') {
+                    const targetEl = menu === 'service-pusat' ? 'tableServicePusat' : (menu === 'service-cabang' ? 'tableServiceCabang' : 'tableServicePickup');
+                    const el = document.getElementById(targetEl);
+                    if(!el) return;
+
+                    el.innerHTML = data.length ? data.map(d => `
                         <tr>
                             <td><strong>${d.ticket_number}</strong></td>
                             <td>${d.customer_name}</td>
-                            <td>${d.customer_phone}</td>
+                            <td>${d.customer_phone || '-'}</td>
                             <td>${d.device_model}</td>
                             <td>${d.serial_number||'-'}</td>
                             <td>${d.warranty_status||'Out of Warranty'}</td>
@@ -668,32 +678,6 @@ def admin_dashboard_page():
                             <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
                         </tr>
                     `).join('') : `<tr><td colspan="9" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                } else if(menu === 'service-cabang') {
-                    document.getElementById('tableServiceCabang').innerHTML = data.length ? data.map(d => `
-                        <tr>
-                            <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.branch_or_point||'-'}</td>
-                            <td>${d.customer_name}</td>
-                            <td>${d.device_model}</td>
-                            <td>${d.serial_number||'-'}</td>
-                            <td>${d.warranty_status||'Out of Warranty'}</td>
-                            <td><span class="badge badge-pending">${d.status||'Diproses'}</span></td>
-                            <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
-                        </tr>
-                    `).join('') : `<tr><td colspan="8" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                } else if(menu === 'service-pickup') {
-                    document.getElementById('tableServicePickup').innerHTML = data.length ? data.map(d => `
-                        <tr>
-                            <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.branch_or_point||'-'}</td>
-                            <td>${d.customer_name}</td>
-                            <td>${d.device_model}</td>
-                            <td>${d.serial_number||'-'}</td>
-                            <td>${d.warranty_status||'Out of Warranty'}</td>
-                            <td><span class="badge badge-lunas">${d.status||'Diterima'}</span></td>
-                            <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
-                        </tr>
-                    `).join('') : `<tr><td colspan="8" style="text-align:center;">Belum ada data di DB</td></tr>`;
                 } else if(menu === 'inv-pusat-list') {
                     document.getElementById('tableInvPusatList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.category||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
                 }
@@ -701,55 +685,25 @@ def admin_dashboard_page():
 
             function populatePaymentRows(menu, data) {
                 const filtered = data.filter(d => !d.warranty_status || d.warranty_status === 'Out of Warranty');
+                const targetEl = menu === 'payment-pusat' ? 'tablePaymentPusat' : (menu === 'payment-cabang' ? 'tablePaymentCabang' : 'tablePaymentPickup');
+                const el = document.getElementById(targetEl);
+                if(!el) return;
 
-                if(menu === 'payment-pusat') {
-                    document.getElementById('tablePaymentPusat').innerHTML = filtered.length ? filtered.map(d => `
-                        <tr>
-                            <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.customer_name}</td>
-                            <td>${d.device_model}</td>
-                            <td>Rp ${(d.total_price || 150000).toLocaleString('id-ID')}</td>
-                            <td><code>${d.payment_code || 'PAY-882019'}</code></td>
-                            <td><span class="badge ${d.payment_status === 'Lunas' ? 'badge-lunas' : 'badge-pending'}">${d.payment_status || 'Belum Lunas'}</span></td>
-                            <td>
-                                <button class="btn btn-info" onclick="openInputPrice('${d.ticket_number}')">Input Price</button>
-                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
-                                <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
-                            </td>
-                        </tr>
-                    `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
-                } else if(menu === 'payment-cabang') {
-                    document.getElementById('tablePaymentCabang').innerHTML = filtered.length ? filtered.map(d => `
-                        <tr>
-                            <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.branch_or_point || 'Cabang'}</td>
-                            <td>${d.customer_name}</td>
-                            <td>Rp ${(d.total_price || 120000).toLocaleString('id-ID')}</td>
-                            <td><code>${d.payment_code || 'PAY-331029'}</code></td>
-                            <td><span class="badge badge-pending">Pending</span></td>
-                            <td>
-                                <button class="btn btn-info" onclick="openInputPrice('${d.ticket_number}')">Input Price</button>
-                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
-                                <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
-                            </td>
-                        </tr>
-                    `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
-                } else if(menu === 'payment-pickup') {
-                    document.getElementById('tablePaymentPickup').innerHTML = filtered.length ? filtered.map(d => `
-                        <tr>
-                            <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.branch_or_point || 'Pickup Point'}</td>
-                            <td>${d.customer_name}</td>
-                            <td>Rp ${(d.total_price || 95000).toLocaleString('id-ID')}</td>
-                            <td><span class="badge badge-lunas">Lunas</span></td>
-                            <td>
-                                <button class="btn btn-info" onclick="openInputPrice('${d.ticket_number}')">Input Price</button>
-                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
-                                <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
-                            </td>
-                        </tr>
-                    `).join('') : `<tr><td colspan="6" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
-                }
+                el.innerHTML = filtered.length ? filtered.map(d => `
+                    <tr>
+                        <td><strong>${d.ticket_number}</strong></td>
+                        <td>${d.customer_name}</td>
+                        <td>${d.device_model}</td>
+                        <td>Rp ${(d.total_price || 150000).toLocaleString('id-ID')}</td>
+                        <td><code>${d.payment_code || 'PAY-882019'}</code></td>
+                        <td><span class="badge ${d.payment_status === 'Lunas' ? 'badge-lunas' : 'badge-pending'}">${d.payment_status || 'Belum Lunas'}</span></td>
+                        <td>
+                            <button class="btn btn-info" onclick="openInputPrice('${d.ticket_number}')">Input Price</button>
+                            <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
+                            <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
+                        </td>
+                    </tr>
+                `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
             }
 
             function openInputPrice(ticketNum) {

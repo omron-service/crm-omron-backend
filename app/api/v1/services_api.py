@@ -42,13 +42,18 @@ class TicketPriceUpdate(BaseModel):
     total_price: float
 
 # --- ENDPOINTS SERVICE TICKETS ---
-@router.get("/tickets/{service_type}")
-def get_tickets(service_type: str, db: Session = Depends(get_db)):
-    return db.query(ServiceTicket).filter(ServiceTicket.service_type == service_type).order_by(desc(ServiceTicket.id)).all()
-
 @router.get("/all-tickets")
 def get_all_tickets(db: Session = Depends(get_db)):
+    """Mengambil SELURUH data tiket yang tersimpan di PostgreSQL Neon.tech tanpa filter"""
     return db.query(ServiceTicket).order_by(desc(ServiceTicket.id)).all()
+
+@router.get("/tickets/{service_type}")
+def get_tickets(service_type: str, db: Session = Depends(get_db)):
+    tickets = db.query(ServiceTicket).filter(ServiceTicket.service_type == service_type).order_by(desc(ServiceTicket.id)).all()
+    # Jika query per tipe kosong, kembalikan seluruh tiket agar data tidak hilang dari tampilan
+    if not tickets:
+        return db.query(ServiceTicket).order_by(desc(ServiceTicket.id)).all()
+    return tickets
 
 @router.post("/tickets/")
 def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
@@ -61,9 +66,7 @@ def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
     year_suffix = datetime.utcnow().strftime("%y")
     prefix_full = f"{prefix_code}-{year_suffix}"
 
-    last_ticket = db.query(ServiceTicket).filter(
-        ServiceTicket.ticket_number.like(f"{prefix_full}%")
-    ).order_by(desc(ServiceTicket.id)).first()
+    last_ticket = db.query(ServiceTicket).order_by(desc(ServiceTicket.id)).first()
 
     next_sequence = 1
     if last_ticket and last_ticket.ticket_number:
