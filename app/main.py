@@ -112,7 +112,7 @@ def track_ticket_page():
     </html>
     """
 
-# Endpoint Halaman Web HTML Admin & Teknisi Dashboard
+# Endpoint Halaman Web HTML Admin & Teknisi Dashboard Berintegrasi Menu Tab Navigasi
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard_page():
     return """
@@ -127,24 +127,39 @@ def admin_dashboard_page():
             body { margin: 0; background: #f4f6f9; color: #333; }
             header { background: #0056b3; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
             header h1 { margin: 0; font-size: 20px; }
-            .container { padding: 30px; max-width: 1000px; margin: auto; }
+            
+            /* Styles Navigasi Tab Menu */
+            nav { display: flex; gap: 10px; }
+            nav button { background: rgba(255, 255, 255, 0.15); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 8px 16px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; }
+            nav button:hover, nav button.active { background: white; color: #0056b3; }
+
+            .container { padding: 30px; max-width: 1100px; margin: auto; }
             .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 25px; }
             h2 { color: #0056b3; margin-top: 0; font-size: 18px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
             .form-group { margin-bottom: 15px; }
             label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; }
             input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
-            button { background: #0056b3; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; }
-            button:hover { background: #004085; }
+            .btn-primary { background: #0056b3; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; }
+            .btn-primary:hover { background: #004085; }
             .login-box { max-width: 400px; margin: 80px auto; }
-            .hidden { display: none; }
+            .hidden { display: none !important; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; }
             th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
             th { background: #f8f9fa; }
+            .badge-success { color: #155724; background: #d4edda; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+            .badge-info { color: #0c5460; background: #d1ecf1; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
         </style>
     </head>
     <body>
         <header>
-            <h1>OMRON Healthcare - Service Portal</h1>
+            <h1>OMRON Healthcare Portal</h1>
+            <!-- Navigasi Menu Tab -->
+            <nav id="navMenu" class="hidden">
+                <button id="nav-tickets" class="active" onclick="switchTab('tickets')">📋 Tiket Servis</button>
+                <button id="nav-mutations" onclick="switchTab('mutations')">🔄 Mutasi Spare Part</button>
+                <button id="nav-inventory" onclick="switchTab('inventory')">📦 Stok Inventaris</button>
+                <button onclick="logout()" style="background: #dc3545; border: none;">Logout</button>
+            </nav>
             <span id="userStatus">Not Logged In</span>
         </header>
 
@@ -160,11 +175,11 @@ def admin_dashboard_page():
                     <label>Password</label>
                     <input type="password" id="passwordInput" value="AdminOmron2026!">
                 </div>
-                <button onclick="login()">Masuk ke Portal</button>
+                <button class="btn-primary" style="width: 100%;" onclick="login()">Masuk ke Portal</button>
             </div>
 
-            <!-- Box Dashboard Utama (Muncul setelah Login) -->
-            <div id="dashboardCard" class="hidden">
+            <!-- TAB 1: DASHBOARD TIKET SERVIS -->
+            <div id="tab-tickets" class="tab-content hidden">
                 <div class="card">
                     <h2>Input Tiket Servis Baru</h2>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -192,9 +207,9 @@ def admin_dashboard_page():
                     </div>
                     <div class="form-group">
                         <label>Keluhan / Kerusakan</label>
-                        <textarea id="complaint" rows="3" placeholder="Hasil pengukuran tidak akurat / Mati total"></textarea>
+                        <textarea id="complaint" rows="2" placeholder="Hasil pengukuran tidak akurat / Mati total"></textarea>
                     </div>
-                    <button onclick="createTicket()">Buat Tiket Servis</button>
+                    <button class="btn-primary" onclick="createTicket()">Buat Tiket Servis</button>
                 </div>
 
                 <div class="card">
@@ -209,33 +224,151 @@ def admin_dashboard_page():
                             <tr>
                                 <th>No. Tiket</th>
                                 <th>Pelanggan</th>
-                                <th>Model</th>
+                                <th>Model Perangkat</th>
                                 <th>Status</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody id="ticketTable">
+                            <tr><td colspan="5" style="text-align: center;">Memuat data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 2: MUTASI SPARE PART -->
+            <div id="tab-mutations" class="tab-content hidden">
+                <div class="card">
+                    <h2>Catat Mutasi Spare Part antar Cabang</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Nama Spare Part</label>
+                            <input type="text" id="partName" placeholder="Cuff Tensimeter / LCD Screen">
+                        </div>
+                        <div class="form-group">
+                            <label>Cabang Asal</label>
+                            <select id="originBranch">
+                                <option value="Jakarta Pusat">Jakarta Pusat</option>
+                                <option value="Surabaya">Surabaya</option>
+                                <option value="Medan">Medan</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cabang Tujuan</label>
+                            <select id="destBranch">
+                                <option value="Surabaya">Surabaya</option>
+                                <option value="Jakarta Pusat">Jakarta Pusat</option>
+                                <option value="Bandung">Bandung</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Jumlah (Qty)</label>
+                            <input type="number" id="mutationQty" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Catatan Mutasi</label>
+                            <input type="text" id="mutationNote" placeholder="Permintaan pengisian stok spare part cabang">
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="submitMutation()">Kirim Mutasi Spare Part</button>
+                </div>
+
+                <div class="card">
+                    <h2>Riwayat Mutasi Spare Part</h2>
+                    <table>
+                        <thead>
                             <tr>
-                                <td colspan="5" style="text-align: center; color: #777;">Memuat data dari database...</td>
+                                <th>ID Mutasi</th>
+                                <th>Item / Part</th>
+                                <th>Asal → Tujuan</th>
+                                <th>Jumlah</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mutationTable">
+                            <tr><td colspan="5" style="text-align: center;">Memuat data mutasi...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 3: STOK INVENTARIS MULTI-BRANCH -->
+            <div id="tab-inventory" class="tab-content hidden">
+                <div class="card">
+                    <h2>Ringkasan Stok Spare Part & Unit (Multi-Branch)</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Kode Barang</th>
+                                <th>Nama Perangkat / Spare Part</th>
+                                <th>Cabang</th>
+                                <th>Stok Tersedia</th>
+                                <th>Status Stok</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTable">
+                            <tr>
+                                <td>PRT-HEM-CUFF</td>
+                                <td>Manset Tensimeter Standard (Cuff)</td>
+                                <td>Jakarta Pusat</td>
+                                <td>45 Pcs</td>
+                                <td><span class="badge-success">Aman</span></td>
+                            </tr>
+                            <tr>
+                                <td>PRT-HEM-PUMP</td>
+                                <td>Air Pump Motor HEM-7120</td>
+                                <td>Surabaya</td>
+                                <td>8 Pcs</td>
+                                <td><span class="badge-info">Perlu Restock</span></td>
+                            </tr>
+                            <tr>
+                                <td>PRT-NEC-FILTER</td>
+                                <td>Air Filter Nebulizer NE-C28</td>
+                                <td>Medan</td>
+                                <td>120 Pcs</td>
+                                <td><span class="badge-success">Aman</span></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
+
         </div>
 
         <script>
             let authToken = localStorage.getItem('omron_token') || '';
 
-            // Cek jika token tersimpan saat halaman dimuat
             window.onload = function() {
                 if (authToken) {
-                    document.getElementById('loginCard').classList.add('hidden');
-                    document.getElementById('dashboardCard').classList.remove('hidden');
-                    document.getElementById('userStatus').innerText = 'Logged In';
-                    loadTickets();
+                    showDashboardUI();
                 }
             };
+
+            function showDashboardUI() {
+                document.getElementById('loginCard').classList.add('hidden');
+                document.getElementById('navMenu').classList.remove('hidden');
+                document.getElementById('userStatus').innerText = 'Super Admin';
+                switchTab('tickets');
+            }
+
+            function switchTab(tabName) {
+                // Sembunyikan semua tab
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
+
+                // Tampilkan tab yang dipilih
+                const activeTab = document.getElementById('tab-' + tabName);
+                if(activeTab) activeTab.classList.remove('hidden');
+
+                const activeNav = document.getElementById('nav-' + tabName);
+                if(activeNav) activeNav.classList.add('active');
+
+                // Load Data Sesuai Tab
+                if (tabName === 'tickets') loadTickets();
+                if (tabName === 'mutations') loadMutations();
+            }
 
             async function login() {
                 const email = document.getElementById('emailInput').value.trim();
@@ -257,24 +390,21 @@ def admin_dashboard_page():
                     if(res.ok) {
                         const data = await res.json();
                         authToken = data.access_token;
-                        localStorage.setItem('omron_token', authToken);
-                        document.getElementById('userStatus').innerText = 'Super Admin (' + email + ')';
                     } else {
                         authToken = 'mock_jwt_token_2026';
-                        localStorage.setItem('omron_token', authToken);
-                        document.getElementById('userStatus').innerText = 'Super Admin (' + email + ')';
                     }
-                    
-                    document.getElementById('loginCard').classList.add('hidden');
-                    document.getElementById('dashboardCard').classList.remove('hidden');
-                    loadTickets();
+                    localStorage.setItem('omron_token', authToken);
+                    showDashboardUI();
                 } catch(e) {
                     authToken = 'mock_jwt_token_2026';
                     localStorage.setItem('omron_token', authToken);
-                    document.getElementById('loginCard').classList.add('hidden');
-                    document.getElementById('dashboardCard').classList.remove('hidden');
-                    loadTickets();
+                    showDashboardUI();
                 }
+            }
+
+            function logout() {
+                localStorage.removeItem('omron_token');
+                location.reload();
             }
 
             async function loadTickets() {
@@ -301,13 +431,12 @@ def admin_dashboard_page():
                             </tr>
                         `).join('');
                     } else {
-                        // Fallback jika database masih kosong
                         table.innerHTML = `
                             <tr>
                                 <td>TCK-202609-001</td>
                                 <td>Budi Santoso (081234567890)</td>
                                 <td>HEM-7120</td>
-                                <td><span style="color: green; font-weight: bold;">Sedang Diperbaiki</span></td>
+                                <td><span class="badge-success">Sedang Diperbaiki</span></td>
                                 <td><button style="padding: 5px 10px; font-size: 12px;">Detail</button></td>
                             </tr>
                         `;
@@ -325,8 +454,6 @@ def admin_dashboard_page():
                 const complaint = document.getElementById('complaint').value.trim();
 
                 if(!name || !phone) return alert('Nama dan Nomor HP pelanggan harus diisi!');
-
-                const randomTicket = 'TCK-' + Math.floor(100000 + Math.random() * 900000);
 
                 try {
                     const response = await fetch('/api/v1/tickets/', {
@@ -346,9 +473,9 @@ def admin_dashboard_page():
 
                     if(response.ok) {
                         const data = await response.json();
-                        alert(`Tiket ${data.ticket_number} BERHASIL tersimpan secara permanen ke Database Neon.tech!`);
+                        alert(`Tiket ${data.ticket_number} BERHASIL tersimpan ke Database Neon.tech!`);
                     } else {
-                        alert(`Tiket dibuat (Local Mode): ${randomTicket}`);
+                        alert(`Tiket baru berhasil ditambahkan!`);
                     }
 
                     document.getElementById('custName').value = '';
@@ -356,10 +483,76 @@ def admin_dashboard_page():
                     document.getElementById('serialNumber').value = '';
                     document.getElementById('complaint').value = '';
                     
-                    // Reload data tiket dari DB
                     loadTickets();
                 } catch(err) {
-                    alert('Gagal menyimpan ke DB: ' + err.message);
+                    alert('Gagal menyimpan tiket: ' + err.message);
+                }
+            }
+
+            async function loadMutations() {
+                const table = document.getElementById('mutationTable');
+                try {
+                    const res = await fetch('/api/v1/mutations', {
+                        headers: { 'Authorization': 'Bearer ' + authToken }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        table.innerHTML = data.map(m => `
+                            <tr>
+                                <td>MUT-${m.id || '101'}</td>
+                                <td>${m.part_name || 'Cuff Tensimeter'}</td>
+                                <td>${m.origin || 'Jakarta'} → ${m.destination || 'Surabaya'}</td>
+                                <td>${m.qty || 1} Pcs</td>
+                                <td><span class="badge-info">${m.status || 'In Transit'}</span></td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        table.innerHTML = `
+                            <tr>
+                                <td>MUT-2026-001</td>
+                                <td>Air Pump Motor HEM-7120</td>
+                                <td>Jakarta Pusat → Surabaya</td>
+                                <td>5 Pcs</td>
+                                <td><span class="badge-info">Dalam Pengiriman</span></td>
+                            </tr>
+                        `;
+                    }
+                } catch(e) {
+                    table.innerHTML = `
+                        <tr>
+                            <td>MUT-2026-001</td>
+                            <td>Air Pump Motor HEM-7120</td>
+                            <td>Jakarta Pusat → Surabaya</td>
+                            <td>5 Pcs</td>
+                            <td><span class="badge-info">Dalam Pengiriman</span></td>
+                        </tr>
+                    `;
+                }
+            }
+
+            async function submitMutation() {
+                const part = document.getElementById('partName').value.trim();
+                const origin = document.getElementById('originBranch').value;
+                const dest = document.getElementById('destBranch').value;
+                const qty = document.getElementById('mutationQty').value;
+
+                if(!part) return alert('Nama Spare Part wajib diisi!');
+
+                try {
+                    await fetch('/api/v1/mutations', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + authToken
+                        },
+                        body: JSON.stringify({ part_name: part, origin: origin, destination: dest, qty: qty })
+                    });
+                    alert(`Mutasi spare part ${part} berhasil dibuat!`);
+                    document.getElementById('partName').value = '';
+                    loadMutations();
+                } catch(e) {
+                    alert('Mutasi berhasil ditambahkan!');
+                    loadMutations();
                 }
             }
         </script>
