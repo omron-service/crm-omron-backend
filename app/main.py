@@ -175,7 +175,6 @@ def admin_dashboard_page():
             .required { color: red; }
             .sparepart-box { background: #f8f9fa; border: 1px dashed #ccc; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
 
-            /* Modal Styling */
             .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
             .modal-content { background: white; width: 90%; max-width: 500px; border-radius: 8px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
             .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
@@ -401,7 +400,7 @@ def admin_dashboard_page():
                     </div>
                 </div>
 
-                <!-- 3. STATUS PAYMENT SERVICE (OTOMATIS OUT OF WARRANTY) -->
+                <!-- 3. STATUS PAYMENT SERVICE -->
                 <div id="tab-payment-pusat" class="tab-content hidden">
                     <div class="card">
                         <h2>3a. Status Payment Service - Pusat (Tiket Out of Warranty)</h2>
@@ -600,14 +599,17 @@ def admin_dashboard_page():
             }
 
             async function syncDatabase() {
-                alert("Memulai sinkronisasi data dari PostgreSQL Neon.tech...");
-                await updateDashboardStats();
-                const activeTab = document.querySelector('.tab-content:not(.hidden)');
-                if(activeTab) {
-                    const tabId = activeTab.id.replace('tab-', '');
-                    await renderTableData(tabId);
+                try {
+                    await updateDashboardStats();
+                    const activeTab = document.querySelector('.tab-content:not(.hidden)');
+                    if(activeTab) {
+                        const tabId = activeTab.id.replace('tab-', '');
+                        await renderTableData(tabId);
+                    }
+                    alert("Sinkronisasi Selesai! Seluruh tiket lama dan baru dari Database Neon.tech telah dimuat.");
+                } catch(e) {
+                    alert("Gagal koneksi ke database: " + e.message);
                 }
-                alert("Sinkronisasi Selesai! Data dari Database Neon.tech dalam kondisi terbaru.");
             }
 
             async function updateDashboardStats() {
@@ -624,9 +626,13 @@ def admin_dashboard_page():
 
             async function renderTableData(menu) {
                 let endpoint = '';
-                if (menu.startsWith('service-')) endpoint = '/api/v1/db/tickets/' + menu.replace('service-', '');
-                else if (menu.startsWith('payment-')) endpoint = '/api/v1/db/tickets/' + menu.replace('payment-', ''); // Filter otomatis dari tickets
-                else if (menu.startsWith('inv-')) endpoint = '/api/v1/db/inventory/' + (menu.includes('pusat') ? 'pusat' : 'cabang');
+                if (menu.startsWith('service-')) {
+                    endpoint = '/api/v1/db/tickets/' + menu.replace('service-', '');
+                } else if (menu.startsWith('payment-')) {
+                    endpoint = '/api/v1/db/tickets/' + menu.replace('payment-', '');
+                } else if (menu.startsWith('inv-')) {
+                    endpoint = '/api/v1/db/inventory/' + (menu.includes('pusat') ? 'pusat' : 'cabang');
+                }
 
                 if (!endpoint) return;
 
@@ -636,7 +642,6 @@ def admin_dashboard_page():
                         let data = await res.json();
                         rawServiceData[menu] = data;
 
-                        // Jika Menu Payment, Filter khusus Tiket Out of Warranty / Berbayar
                         if(menu.startsWith('payment-')) {
                             populatePaymentRows(menu, data);
                         } else {
@@ -695,7 +700,6 @@ def admin_dashboard_page():
             }
 
             function populatePaymentRows(menu, data) {
-                // Mengambil secara otomatis tiket yang 'Out of Warranty' atau memiliki tagihan
                 const filtered = data.filter(d => !d.warranty_status || d.warranty_status === 'Out of Warranty');
 
                 if(menu === 'payment-pusat') {
@@ -718,7 +722,7 @@ def admin_dashboard_page():
                     document.getElementById('tablePaymentCabang').innerHTML = filtered.length ? filtered.map(d => `
                         <tr>
                             <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.branch_or_point || 'Surabaya'}</td>
+                            <td>${d.branch_or_point || 'Cabang'}</td>
                             <td>${d.customer_name}</td>
                             <td>Rp ${(d.total_price || 120000).toLocaleString('id-ID')}</td>
                             <td><code>${d.payment_code || 'PAY-331029'}</code></td>
@@ -734,7 +738,7 @@ def admin_dashboard_page():
                     document.getElementById('tablePaymentPickup').innerHTML = filtered.length ? filtered.map(d => `
                         <tr>
                             <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.branch_or_point || 'Apotek K-24'}</td>
+                            <td>${d.branch_or_point || 'Pickup Point'}</td>
                             <td>${d.customer_name}</td>
                             <td>Rp ${(d.total_price || 95000).toLocaleString('id-ID')}</td>
                             <td><span class="badge badge-lunas">Lunas</span></td>
@@ -757,14 +761,27 @@ def admin_dashboard_page():
                 document.getElementById('modalInputPrice').classList.add('hidden');
             }
 
-            function saveTicketPrice() {
+            async function saveTicketPrice() {
                 const ticket = document.getElementById('priceTicketNum').value;
                 const serviceFee = parseInt(document.getElementById('priceServiceFee').value || 0);
                 const partFee = parseInt(document.getElementById('pricePartFee').value || 0);
                 const total = serviceFee + partFee;
 
-                alert(`Harga Servis untuk Tiket ${ticket} Berhasil Diperbarui!\nTotal Biaya: Rp ${total.toLocaleString('id-ID')}`);
-                closePriceModal();
+                try {
+                    const res = await fetch('/api/v1/db/tickets/update-price', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticket_number: ticket, total_price: total })
+                    });
+                    if(res.ok) {
+                        alert(`Harga Servis untuk Tiket ${ticket} Berhasil Disimpan ke Database!\nTotal Biaya: Rp ${total.toLocaleString('id-ID')}`);
+                        closePriceModal();
+                        const activeTab = document.querySelector('.tab-content:not(.hidden)').id.replace('tab-', '');
+                        renderTableData(activeTab);
+                    }
+                } catch(e) {
+                    alert('Gagal update harga: ' + e.message);
+                }
             }
 
             function generatePaymentCode(ticketNum) {
@@ -894,9 +911,8 @@ def admin_dashboard_page():
                         <div class="form-group">
                             <label>Status Garansi</label>
                             <select id="inpGaransi">
-                                <option value="">— pilih status —</option>
-                                <option value="Under Warranty">Under Warranty</option>
                                 <option value="Out of Warranty">Out of Warranty</option>
+                                <option value="Under Warranty">Under Warranty</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -972,26 +988,6 @@ def admin_dashboard_page():
                         </div>
                     </div>
 
-                    <div class="sparepart-box">
-                        <strong>Sparepart 2</strong>
-                        <div class="form-grid">
-                            <input id="sp2_nama" placeholder="Nama Sparepart 2">
-                            <input id="sp2_kode" placeholder="Kode Sparepart">
-                            <input type="number" id="sp2_jumlah" placeholder="Jumlah">
-                            <input type="number" id="sp2_harga" placeholder="Harga (Rp)">
-                        </div>
-                    </div>
-
-                    <div class="sparepart-box">
-                        <strong>Sparepart 3</strong>
-                        <div class="form-grid">
-                            <input id="sp3_nama" placeholder="Nama Sparepart 3">
-                            <input id="sp3_kode" placeholder="Kode Sparepart">
-                            <input type="number" id="sp3_jumlah" placeholder="Jumlah">
-                            <input type="number" id="sp3_harga" placeholder="Harga (Rp)">
-                        </div>
-                    </div>
-
                     <div class="form-section-title">5. Notifikasi</div>
                     <div class="form-grid">
                         <div class="form-group">
@@ -1021,6 +1017,7 @@ def admin_dashboard_page():
                     branch_or_point: document.getElementById('inpProvinsi').value || null,
                     device_model: document.getElementById('inpModel').value || 'HEM-7120',
                     serial_number: document.getElementById('inpSN').value || null,
+                    warranty_status: document.getElementById('inpGaransi').value || 'Out of Warranty',
                     complaint: document.getElementById('inpKeluhan').value || null
                 };
 
@@ -1033,7 +1030,7 @@ def admin_dashboard_page():
 
                     if (res.ok) {
                         const savedData = await res.json();
-                        alert(`BERHASIL! Tiket baru ${savedData.ticket_number} berhasil dibuat berurutan dan tersimpan di Database Neon.tech!`);
+                        alert(`BERHASIL! Tiket baru ${savedData.ticket_number} berhasil dibuat dan tersimpan di Database Neon.tech!`);
                         hideFormInPage(menuKey);
                         renderTableData(menuKey);
                         updateDashboardStats();
