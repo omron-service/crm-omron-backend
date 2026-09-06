@@ -618,6 +618,8 @@ def admin_dashboard_page():
                         }
                         await updateDashboardStats();
                         alert(`BERHASIL! ${allTickets.length} tiket ditemukan dan disinkronisasi dari Database Neon.tech.`);
+                    } else {
+                        alert("Gagal sinkronisasi data dari DB (HTTP " + res.status + ")");
                     }
                 } catch(e) {
                     alert("Gagal sinkronisasi data dari DB: " + e.message);
@@ -959,37 +961,46 @@ def admin_dashboard_page():
             }
 
             async function savePageFormData(menuKey) {
-                const name = document.getElementById('inpName').value;
-                const phone = document.getElementById('inpPhone1').value;
-                if(!name || !phone) return alert('Nama Pemilik dan No. HP/WhatsApp 1 Wajib Diisi!');
+                const getVal = (id) => {
+                    const el = document.getElementById(id);
+                    return el ? el.value.trim() : '';
+                };
 
-                const endpoint = '/api/v1/db/tickets/';
+                const name = getVal('inpName');
+                const phone = getVal('inpPhone1');
+
+                if(!name || !phone) {
+                    return alert('Nama Pemilik dan No. HP/WhatsApp 1 Wajib Diisi!');
+                }
+
                 const payload = {
                     service_type: menuKey.replace('service-', ''),
                     customer_name: name,
                     customer_phone: phone,
-                    branch_or_point: document.getElementById('inpProvinsi').value || null,
-                    device_model: document.getElementById('inpModel').value || 'HEM-7120',
-                    serial_number: document.getElementById('inpSN').value || null,
-                    warranty_status: document.getElementById('inpGaransi').value || 'Out of Warranty',
-                    complaint: document.getElementById('inpKeluhan').value || null
+                    branch_or_point: getVal('inpProvinsi') || '-',
+                    device_model: getVal('inpModel') || 'HEM-7120',
+                    serial_number: getVal('inpSN') || '-',
+                    warranty_status: getVal('inpGaransi') || 'Out of Warranty',
+                    complaint: getVal('inpKeluhan') || '-'
                 };
 
                 try {
-                    const res = await fetch(endpoint, {
+                    const res = await fetch('/api/v1/db/tickets/', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
 
+                    const resData = await res.json();
+
                     if (res.ok) {
-                        const savedData = await res.json();
-                        alert(`BERHASIL! Tiket baru ${savedData.ticket_number} berhasil dibuat dan tersimpan di Database Neon.tech!`);
+                        alert(`BERHASIL! Tiket baru ${resData.ticket_number} berhasil dibuat dan tersimpan di Database!`);
                         hideFormInPage(menuKey);
                         renderTableData(menuKey);
                         updateDashboardStats();
                     } else {
-                        alert('Gagal menyimpan ke DB: ' + res.statusText);
+                        const errMsg = resData.detail || (typeof resData === 'object' ? JSON.stringify(resData) : res.statusText);
+                        alert(`Gagal menyimpan ke DB: ${errMsg}`);
                     }
                 } catch(e) {
                     alert('Error koneksi database: ' + e.message);
