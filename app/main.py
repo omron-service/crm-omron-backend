@@ -161,6 +161,7 @@ def admin_dashboard_page():
             .btn-danger { background: #dc3545; }
             .btn-success { background: #28a745; }
             .btn-secondary { background: #6c757d; }
+            .btn-warning { background: #ffc107; color: #212529; }
             .hidden { display: none !important; }
             .login-box { max-width: 400px; margin: 80px auto; }
             .badge { padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
@@ -223,6 +224,7 @@ def admin_dashboard_page():
             <header>
                 <h1 id="pageTitle">Portal Management System</h1>
                 <div>
+                    <button class="btn btn-warning" style="margin-right: 10px;" onclick="syncDatabase()">🔄 Migrasi / Sync DB</button>
                     <span id="userStatus" style="font-weight: bold; font-size: 13px; margin-right: 15px;">Belum Login</span>
                     <button id="btnLogout" class="btn btn-danger hidden" onclick="logout()">Logout</button>
                 </div>
@@ -265,7 +267,6 @@ def admin_dashboard_page():
 
                 <!-- 2. DATA SERVICE - PUSAT -->
                 <div id="tab-service-pusat" class="tab-content hidden">
-                    <!-- VIEW TABEL SERVICE PUSAT -->
                     <div id="view-table-service-pusat" class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2a. Data Service - Pusat</h2>
@@ -277,7 +278,6 @@ def admin_dashboard_page():
                         </table>
                     </div>
 
-                    <!-- VIEW FORM IN-PAGE SERVICE PUSAT -->
                     <div id="view-form-service-pusat" class="card hidden">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
                             <h2 style="margin: 0; border: none;">Form Input Tiket Servis Pusat Baru</h2>
@@ -346,9 +346,7 @@ def admin_dashboard_page():
                 <!-- 3. STATUS PAYMENT SERVICE -->
                 <div id="tab-payment-pusat" class="tab-content hidden">
                     <div class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">3a. Status Payment Service - Pusat</h2>
-                        </div>
+                        <h2>3a. Status Payment Service - Pusat</h2>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Total Biaya</th><th>Metode</th><th>Kode Payment</th><th>Status</th></tr></thead>
                             <tbody id="tablePaymentPusat"></tbody>
@@ -486,6 +484,17 @@ def admin_dashboard_page():
                 updateDashboardStats();
             }
 
+            async function syncDatabase() {
+                alert("Memulai sinkronisasi data dari PostgreSQL Neon.tech...");
+                await updateDashboardStats();
+                const activeTab = document.querySelector('.tab-content:not(.hidden)');
+                if(activeTab) {
+                    const tabId = activeTab.id.replace('tab-', '');
+                    await renderTableData(tabId);
+                }
+                alert("Sinkronisasi Selesai! Data dari Database Neon.tech dalam kondisi terbaru.");
+            }
+
             async function updateDashboardStats() {
                 try {
                     const resPusat = await fetch('/api/v1/db/tickets/pusat');
@@ -569,10 +578,9 @@ def admin_dashboard_page():
             function getTicketFormHTML(menuKey) {
                 return `
                     <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
-                        ℹ️ <strong>Nomor Tiket Otomatis:</strong> Format <code>XXX-2600001</code> akan dibuatkan secara otomatis oleh sistem setelah disave.
+                        ℹ️ <strong>Nomor Tiket Otomatis Continuously:</strong> Sistem akan otomatis mengecek nomor urut tiket terakhir di DB (contoh: <code>JKT-2600001</code> → <code>JKT-2600002</code>).
                     </div>
 
-                    <!-- 1. DATA PELANGGAN -->
                     <div class="form-section-title">1. Data Pelanggan</div>
                     <div class="form-grid">
                         <div class="form-group"><label>Nama Pemilik <span class="required">*</span></label><input id="inpName" placeholder="Contoh: Budi Santoso"></div>
@@ -610,7 +618,6 @@ def admin_dashboard_page():
                         <div class="form-group"><label>Tanggal Alat Selesai</label><input type="date" id="inpDateFinished"></div>
                     </div>
 
-                    <!-- 2. DATA PRODUK -->
                     <div class="form-section-title">2. Data Produk</div>
                     <div class="form-grid">
                         <div class="form-group">
@@ -672,7 +679,6 @@ def admin_dashboard_page():
                         </div>
                     </div>
 
-                    <!-- 3. DATA SERVIS -->
                     <div class="form-section-title">3. Data Servis</div>
                     <div class="form-grid">
                         <div class="form-group"><label>Keluhan Pelanggan</label><input id="inpKeluhan" placeholder="Keluhan perangkat"></div>
@@ -707,7 +713,6 @@ def admin_dashboard_page():
                         </div>
                     </div>
 
-                    <!-- 4. SPAREPART DIGUNAKAN -->
                     <div class="form-section-title">4. Sparepart Digunakan</div>
                     <small style="color:#666; display:block; margin-bottom:10px;">Mengisi kode/nama & jumlah di sini akan otomatis mengurangi stok sparepart di lokasi tiket ini.</small>
 
@@ -741,7 +746,6 @@ def admin_dashboard_page():
                         </div>
                     </div>
 
-                    <!-- 5. NOTIFIKASI -->
                     <div class="form-section-title">5. Notifikasi</div>
                     <div class="form-grid">
                         <div class="form-group">
@@ -783,7 +787,7 @@ def admin_dashboard_page():
 
                     if (res.ok) {
                         const savedData = await res.json();
-                        alert(`BERHASIL! Tiket ${savedData.ticket_number || 'baru'} berhasil dibuat dan tersimpan ke Database Neon.tech!`);
+                        alert(`BERHASIL! Tiket baru ${savedData.ticket_number} berhasil dibuat berurutan dan tersimpan di Database Neon.tech!`);
                         hideFormInPage(menuKey);
                         renderTableData(menuKey);
                         updateDashboardStats();
