@@ -617,7 +617,7 @@ def admin_dashboard_page():
                             populateTableRows(activeTab, allTickets);
                         }
                         await updateDashboardStats();
-                        alert(`BERHASIL! ${allTickets.length} tiket ditemukan dan disinkronisasi dari Database Neon.tech.`);
+                        alert(`BERHASIL! ${allTickets.length} tiket ditemukan dan disinkronisasi dari Database.`);
                     } else {
                         alert("Gagal sinkronisasi data dari DB (HTTP " + res.status + ")");
                     }
@@ -757,8 +757,9 @@ def admin_dashboard_page():
             }
 
             function updateCityDropdown() {
-                const prov = document.getElementById('inpProvinsi').value;
+                const prov = document.getElementById('inpProvinsi') ? document.getElementById('inpProvinsi').value : '';
                 const citySelect = document.getElementById('inpKota');
+                if(!citySelect) return;
                 citySelect.innerHTML = '<option value="">— pilih kota —</option>';
                 if(cityData[prov]) {
                     cityData[prov].forEach(c => {
@@ -768,8 +769,9 @@ def admin_dashboard_page():
             }
 
             function updateModelDropdown() {
-                const cat = document.getElementById('inpCategory').value;
+                const cat = document.getElementById('inpCategory') ? document.getElementById('inpCategory').value : '';
                 const modelSelect = document.getElementById('inpModel');
+                if(!modelSelect) return;
                 modelSelect.innerHTML = '<option value="">— pilih model —</option>';
                 if(modelData[cat]) {
                     modelData[cat].forEach(m => {
@@ -994,7 +996,7 @@ def admin_dashboard_page():
                     const resData = await res.json();
 
                     if (res.ok) {
-                        alert(`BERHASIL! Tiket baru ${resData.ticket_number} berhasil dibuat dan tersimpan di Database!`);
+                        alert(`BERHASIL! Tiket baru ${resData.ticket_number} berhasil dibuat dan tersimpan!`);
                         hideFormInPage(menuKey);
                         renderTableData(menuKey);
                         updateDashboardStats();
