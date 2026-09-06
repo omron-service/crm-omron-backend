@@ -160,17 +160,12 @@ def admin_dashboard_page():
             .btn:hover { background: #004085; }
             .btn-danger { background: #dc3545; }
             .btn-success { background: #28a745; }
+            .btn-secondary { background: #6c757d; }
             .hidden { display: none !important; }
             .login-box { max-width: 400px; margin: 80px auto; }
             .badge { padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
             .badge-lunas { background: #d4edda; color: #155724; }
             .badge-pending { background: #fff3cd; color: #856404; }
-
-            .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
-            .modal-content { background: white; width: 95%; max-width: 900px; max-height: 90vh; overflow-y: auto; border-radius: 8px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-            .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
-            .modal-header h3 { margin: 0; color: #0056b3; font-size: 16px; }
-            .close-btn { font-size: 20px; cursor: pointer; border: none; background: none; font-weight: bold; color: #888; }
             .required { color: red; }
             .sparepart-box { background: #f8f9fa; border: 1px dashed #ccc; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
         </style>
@@ -268,43 +263,83 @@ def admin_dashboard_page():
                     </div>
                 </div>
 
-                <!-- 2. DATA SERVICE -->
+                <!-- 2. DATA SERVICE - PUSAT -->
                 <div id="tab-service-pusat" class="tab-content hidden">
-                    <div class="card">
+                    <!-- VIEW TABEL SERVICE PUSAT -->
+                    <div id="view-table-service-pusat" class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2a. Data Service - Pusat</h2>
-                            <button class="btn btn-success" onclick="openModal('service-pusat')">+ Tambah Service Pusat</button>
+                            <button class="btn btn-success" onclick="showFormInPage('service-pusat')">+ Tambah Tiket</button>
                         </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Pemilik</th><th>No. HP/WA 1</th><th>Model Alat</th><th>Keluhan</th><th>Repair Status</th></tr></thead>
                             <tbody id="tableServicePusat"></tbody>
                         </table>
                     </div>
+
+                    <!-- VIEW FORM IN-PAGE SERVICE PUSAT -->
+                    <div id="view-form-service-pusat" class="card hidden">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
+                            <h2 style="margin: 0; border: none;">Form Input Tiket Servis Pusat Baru</h2>
+                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pusat')">← Kembali ke Tabel</button>
+                        </div>
+                        <div id="formContainer-service-pusat"></div>
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pusat')">Batal</button>
+                            <button class="btn btn-success" onclick="savePageFormData('service-pusat')">Simpan Tiket Service</button>
+                        </div>
+                    </div>
                 </div>
 
+                <!-- 2b. DATA SERVICE - CABANG -->
                 <div id="tab-service-cabang" class="tab-content hidden">
-                    <div class="card">
+                    <div id="view-table-service-cabang" class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2b. Data Service - Cabang</h2>
-                            <button class="btn btn-success" onclick="openModal('service-cabang')">+ Tambah Service Cabang</button>
+                            <button class="btn btn-success" onclick="showFormInPage('service-cabang')">+ Tambah Tiket</button>
                         </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Pemilik</th><th>Model Alat</th><th>Repair Status</th></tr></thead>
                             <tbody id="tableServiceCabang"></tbody>
                         </table>
                     </div>
+
+                    <div id="view-form-service-cabang" class="card hidden">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
+                            <h2 style="margin: 0; border: none;">Form Input Tiket Servis Cabang Baru</h2>
+                            <button class="btn btn-secondary" onclick="hideFormInPage('service-cabang')">← Kembali ke Tabel</button>
+                        </div>
+                        <div id="formContainer-service-cabang"></div>
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                            <button class="btn btn-secondary" onclick="hideFormInPage('service-cabang')">Batal</button>
+                            <button class="btn btn-success" onclick="savePageFormData('service-cabang')">Simpan Tiket Service</button>
+                        </div>
+                    </div>
                 </div>
 
+                <!-- 2c. DATA SERVICE - PICKUP CENTER -->
                 <div id="tab-service-pickup" class="tab-content hidden">
-                    <div class="card">
+                    <div id="view-table-service-pickup" class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2c. Data Service - Pickup Center</h2>
-                            <button class="btn btn-success" onclick="openModal('service-pickup')">+ Tambah Service Pickup</button>
+                            <button class="btn btn-success" onclick="showFormInPage('service-pickup')">+ Tambah Tiket</button>
                         </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Pickup Point</th><th>Pemilik</th><th>Status Kurir</th></tr></thead>
                             <tbody id="tableServicePickup"></tbody>
                         </table>
+                    </div>
+
+                    <div id="view-form-service-pickup" class="card hidden">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
+                            <h2 style="margin: 0; border: none;">Form Input Tiket Servis Pickup Center Baru</h2>
+                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pickup')">← Kembali ke Tabel</button>
+                        </div>
+                        <div id="formContainer-service-pickup"></div>
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pickup')">Batal</button>
+                            <button class="btn btn-success" onclick="savePageFormData('service-pickup')">Simpan Tiket Service</button>
+                        </div>
                     </div>
                 </div>
 
@@ -313,7 +348,6 @@ def admin_dashboard_page():
                     <div class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">3a. Status Payment Service - Pusat</h2>
-                            <button class="btn btn-success" onclick="openModal('payment-pusat')">+ Catat Payment Pusat</button>
                         </div>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Total Biaya</th><th>Metode</th><th>Kode Payment</th><th>Status</th></tr></thead>
@@ -324,10 +358,7 @@ def admin_dashboard_page():
 
                 <div id="tab-payment-cabang" class="tab-content hidden">
                     <div class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">3b. Status Payment Service - Cabang</h2>
-                            <button class="btn btn-success" onclick="openModal('payment-cabang')">+ Catat Payment Cabang</button>
-                        </div>
+                        <h2>3b. Status Payment Service - Cabang</h2>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Total Biaya</th><th>Kode Payment</th><th>Status</th></tr></thead>
                             <tbody id="tablePaymentCabang"></tbody>
@@ -337,10 +368,7 @@ def admin_dashboard_page():
 
                 <div id="tab-payment-pickup" class="tab-content hidden">
                     <div class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">3c. Status Payment Service - Pickup Center</h2>
-                            <button class="btn btn-success" onclick="openModal('payment-pickup')">+ Catat Payment Pickup</button>
-                        </div>
+                        <h2>3c. Status Payment Service - Pickup Center</h2>
                         <table>
                             <thead><tr><th>No. Tiket</th><th>Pickup Location</th><th>Biaya Kirim & Servis</th><th>Status</th></tr></thead>
                             <tbody id="tablePaymentPickup"></tbody>
@@ -351,10 +379,7 @@ def admin_dashboard_page():
                 <!-- 4. INVENTORY PART -->
                 <div id="tab-inv-pusat-list" class="tab-content hidden">
                     <div class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">4a.1. List Stok Spare Part di Pusat</h2>
-                            <button class="btn btn-success" onclick="openModal('inv-pusat-list')">+ Tambah Stok Part Pusat</button>
-                        </div>
+                        <h2>4a.1. List Stok Spare Part di Pusat</h2>
                         <table>
                             <thead><tr><th>Kode Part</th><th>Nama Spare Part</th><th>Kategori</th><th>Stok Pusat</th></tr></thead>
                             <tbody id="tableInvPusatList"></tbody>
@@ -365,18 +390,7 @@ def admin_dashboard_page():
                 <div id="tab-inv-pusat-pakai" class="tab-content hidden"><div class="card"><h2>4a.2. Pemakaian Stok di Pusat</h2><p>Riwayat pemakaian spare part pengerjaan servis pusat.</p></div></div>
                 <div id="tab-inv-pusat-terima" class="tab-content hidden"><div class="card"><h2>4a.3. Penerimaan Stok dari Gudang Utama</h2><p>Daftar masukan stok baru dari Gudang Utama.</p></div></div>
                 <div id="tab-inv-pusat-kirim" class="tab-content hidden"><div class="card"><h2>4a.4. Pengiriman Stok ke Cabang</h2><p>Pengiriman stok part dari Pusat ke cabang.</p></div></div>
-                <div id="tab-inv-cabang-list" class="tab-content hidden">
-                    <div class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">4b.1. List Stok di Cabang</h2>
-                            <button class="btn btn-success" onclick="openModal('inv-cabang-list')">+ Tambah Stok Part Cabang</button>
-                        </div>
-                        <table>
-                            <thead><tr><th>Kode Part</th><th>Nama Part</th><th>Cabang</th><th>Jumlah Stok</th></tr></thead>
-                            <tbody id="tableInvCabangList"></tbody>
-                        </table>
-                    </div>
-                </div>
+                <div id="tab-inv-cabang-list" class="tab-content hidden"><div class="card"><h2>4b.1. List Stok di Cabang</h2><table><thead><tr><th>Kode Part</th><th>Nama Part</th><th>Cabang</th><th>Jumlah Stok</th></tr></thead><tbody id="tableInvCabangList"></tbody></table></div></div>
                 <div id="tab-inv-cabang-pakai" class="tab-content hidden"><div class="card"><h2>4b.2. Pemakaian Stok di Cabang</h2><p>Penggunaan part oleh teknisi cabang.</p></div></div>
                 <div id="tab-inv-cabang-terima" class="tab-content hidden"><div class="card"><h2>4b.3. Penerimaan Stok dari Pusat</h2><p>Konfirmasi penerimaan part dari Pusat.</p></div></div>
                 <div id="tab-inv-cabang-minta" class="tab-content hidden"><div class="card"><h2>4b.4. Permintaan Stok ke Pusat</h2><p>Form permintaan pengisian ulang stok part ke Pusat.</p></div></div>
@@ -406,26 +420,9 @@ def admin_dashboard_page():
             </div>
         </main>
 
-        <!-- MODAL FORM SERVICE BARU & LAINNYA -->
-        <div id="modalForm" class="modal-overlay hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 id="modalTitle">Form Tambah Tiket Servis Baru</h3>
-                    <button class="close-btn" onclick="closeModal()">&times;</button>
-                </div>
-                <div id="modalBody"></div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                    <button class="btn" style="background:#6c757d;" onclick="closeModal()">Batal</button>
-                    <button class="btn btn-success" onclick="saveModalData()">Simpan Tiket Service</button>
-                </div>
-            </div>
-        </div>
-
         <script>
             let authToken = localStorage.getItem('omron_token') || '';
-            let currentActiveMenu = '';
 
-            // Data Kota berdasarkan Provinsi
             const cityData = {
                 "DKI Jakarta": ["Jakarta Pusat", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Jakarta Utara"],
                 "Jawa Barat": ["Bandung", "Bekasi", "Bogor", "Depok", "Cirebon", "Sukabumi"],
@@ -441,7 +438,6 @@ def admin_dashboard_page():
                 "Lainnya": ["Lainnya / Luar Daerah"]
             };
 
-            // Data Model berdasarkan Produk Kategori
             const modelData = {
                 "Arm BPM": ["HEM-7120", "HEM-7156", "HEM-7156T", "HEM-7361T", "HEM-7130", "HEM-7280T"],
                 "Wrist BPM": ["HEM-6161", "HEM-6181", "HEM-6232T"],
@@ -481,6 +477,10 @@ def admin_dashboard_page():
                 if(target) target.classList.remove('hidden');
 
                 document.getElementById('pageTitle').innerText = 'Menu: ' + tabId.toUpperCase().replace(/-/g, ' ');
+
+                if (tabId.startsWith('service-')) {
+                    hideFormInPage(tabId);
+                }
 
                 renderTableData(tabId);
                 updateDashboardStats();
@@ -550,254 +550,229 @@ def admin_dashboard_page():
                 }
             }
 
-            function openModal(menu) {
-                currentActiveMenu = menu;
-                const modalBody = document.getElementById('modalBody');
-                document.getElementById('modalTitle').innerText = 'Tambah Tiket Service Baru (' + menu.toUpperCase() + ')';
+            function showFormInPage(menuKey) {
+                document.getElementById('view-table-' + menuKey).classList.add('hidden');
+                const formView = document.getElementById('view-form-' + menuKey);
+                formView.classList.remove('hidden');
 
-                if(menu.startsWith('service-')) {
-                    modalBody.innerHTML = `
-                        <!-- INFORMASI NOTIFIKASI NOMOR TIKET -->
-                        <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
-                            ℹ️ <strong>Nomor Tiket Otomatis:</strong> Format <code>XXX-2600001</code> akan dibuatkan secara otomatis oleh sistem setelah tombol disimpan.
-                        </div>
-
-                        <!-- 1. DATA PELANGGAN -->
-                        <div class="form-section-title">1. Data Pelanggan</div>
-                        <div class="form-grid">
-                            <div class="form-group"><label>Nama Pemilik <span class="required">*</span></label><input id="inpName" placeholder="Contoh: Budi Santoso"></div>
-                            <div class="form-group"><label>No. HP / WhatsApp 1 <span class="required">*</span></label><input id="inpPhone1" placeholder="081234567890"></div>
-                            <div class="form-group"><label>Nama Instansi</label><input id="inpInstansi" placeholder="PT / Rumah Sakit / Klinik"></div>
-                            <div class="form-group"><label>No. HP / WhatsApp 2</label><input id="inpPhone2" placeholder="081987654321"></div>
-                        </div>
-                        <div class="form-group"><label>Alamat Pemilik</label><textarea id="inpAddress" rows="2" placeholder="Alamat lengkap..."></textarea></div>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Provinsi</label>
-                                <select id="inpProvinsi" onchange="updateCityDropdown()">
-                                    <option value="">— pilih provinsi —</option>
-                                    <option value="DKI Jakarta">DKI Jakarta</option>
-                                    <option value="Jawa Barat">Jawa Barat</option>
-                                    <option value="Banten">Banten</option>
-                                    <option value="Jawa Tengah">Jawa Tengah</option>
-                                    <option value="DI Yogyakarta">DI Yogyakarta</option>
-                                    <option value="Jawa Timur">Jawa Timur</option>
-                                    <option value="Bali">Bali</option>
-                                    <option value="Sumatera Utara">Sumatera Utara</option>
-                                    <option value="Sumatera Selatan">Sumatera Selatan</option>
-                                    <option value="Kalimantan Timur">Kalimantan Timur</option>
-                                    <option value="Sulawesi Selatan">Sulawesi Selatan</option>
-                                    <option value="Lainnya">Lainnya</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Kota (pilih provinsi dulu)</label>
-                                <select id="inpKota">
-                                    <option value="">— pilih kota —</option>
-                                </select>
-                            </div>
-                            <div class="form-group"><label>Tanggal Alat Diterima</label><input type="date" id="inpDateReceived"></div>
-                            <div class="form-group"><label>Tanggal Alat Selesai</label><input type="date" id="inpDateFinished"></div>
-                        </div>
-
-                        <!-- 2. DATA PRODUK -->
-                        <div class="form-section-title">2. Data Produk</div>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Produk Kategori</label>
-                                <select id="inpCategory" onchange="updateModelDropdown()">
-                                    <option value="">— pilih kategori —</option>
-                                    <option value="Arm BPM">Arm BPM</option>
-                                    <option value="Wrist BPM">Wrist BPM</option>
-                                    <option value="NEB-Comp">NEB-Comp</option>
-                                    <option value="NEB-Mesh">NEB-Mesh</option>
-                                    <option value="NEB-Ultra">NEB-Ultra</option>
-                                    <option value="BCM">BCM</option>
-                                    <option value="DWS">DWS</option>
-                                    <option value="Thermo">Thermo</option>
-                                    <option value="TENS">TENS</option>
-                                    <option value="MEDICAL">MEDICAL</option>
-                                    <option value="Others">Others</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Model Alat (pilih kategori dulu)</label>
-                                <select id="inpModel">
-                                    <option value="">— pilih model —</option>
-                                </select>
-                            </div>
-                            <div class="form-group"><label>Serial No. Alat</label><input id="inpSN" placeholder="SN2026xxxx"></div>
-                            <div class="form-group"><label>Aksesoris</label><input id="inpAccessories" placeholder="Cuff, Adaptor, Bag"></div>
-                            <div class="form-group">
-                                <label>Status Garansi</label>
-                                <select id="inpGaransi">
-                                    <option value="">— pilih status —</option>
-                                    <option value="Under Warranty">Under Warranty</option>
-                                    <option value="Out of Warranty">Out of Warranty</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Warranty Period (tahun)</label>
-                                <select id="inpWarrantyPeriod">
-                                    <option value="">— pilih —</option>
-                                    <option value="1">1 Tahun</option>
-                                    <option value="2">2 Tahun</option>
-                                    <option value="3">3 Tahun</option>
-                                    <option value="4">4 Tahun</option>
-                                    <option value="5">5 Tahun</option>
-                                    <option value="6">6 Tahun</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Asal Produk</label>
-                                <select id="inpAsalProduk">
-                                    <option value="">— pilih asal —</option>
-                                    <option value="LEU">LEU</option>
-                                    <option value="EU-DRC">EU-DRC</option>
-                                    <option value="AMS/IDC">AMS/IDC</option>
-                                    <option value="APT/ TKO">APT/ TKO</option>
-                                    <option value="CV/ PT/ RS">CV/ PT/ RS</option>
-                                    <option value="ALPRO">ALPRO</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- 3. DATA SERVIS -->
-                        <div class="form-section-title">3. Data Servis</div>
-                        <div class="form-grid">
-                            <div class="form-group"><label>Keluhan Pelanggan</label><input id="inpKeluhan" placeholder="Keluhan perangkat"></div>
-                            <div class="form-group"><label>Analisa Teknisi</label><input id="inpAnalisa" placeholder="Hasil diagnosa"></div>
-                            <div class="form-group"><label>Symptom (kode)</label><input id="inpSymptom" placeholder="Contoh: ERR-01"></div>
-                            <div class="form-group"><label>Leadtime (hari)</label><input type="number" id="inpLeadtime" value="1"></div>
-                        </div>
-                        <div class="form-grid">
-                            <div class="form-group"><label>Catatan</label><input id="inpCatatan" placeholder="Catatan tambahan..."></div>
-                            <div class="form-group">
-                                <label>Remarks</label>
-                                <select id="inpRemarks">
-                                    <option value="">— pilih remarks —</option>
-                                    <option value="Compliance Check/ Sensor Check">Compliance Check/ Sensor Check</option>
-                                    <option value="Repair">Repair</option>
-                                    <option value="Replace Product/ Claim">Replace Product/ Claim</option>
-                                    <option value="Unrepairable/ Return to Customer">Unrepairable/ Return to Customer</option>
-                                    <option value="Disagree with Service Fee">Disagree with Service Fee</option>
-                                    <option value="No Response">No Response</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Repair Status</label>
-                                <select id="inpRepairStatus">
-                                    <option value="Diterima Service Center">Diterima Service Center</option>
-                                    <option value="Diterima Pickup Center">Diterima Pickup Center</option>
-                                    <option value="Diproses">Diproses</option>
-                                    <option value="Selesai">Selesai</option>
-                                    <option value="Diambil Pemilik">Diambil Pemilik</option>
-                                    <option value="Dikirim via GED">Dikirim via GED</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- 4. SPAREPART DIGUNAKAN -->
-                        <div class="form-section-title">4. Sparepart Digunakan</div>
-                        <small style="color:#666; display:block; margin-bottom:10px;">Mengisi kode/nama & jumlah di sini akan otomatis mengurangi stok sparepart di lokasi tiket ini.</small>
-
-                        <div class="sparepart-box">
-                            <strong>Sparepart 1</strong>
-                            <div class="form-grid">
-                                <input id="sp1_nama" placeholder="Nama Sparepart 1">
-                                <input id="sp1_kode" placeholder="Kode Sparepart">
-                                <input type="number" id="sp1_jumlah" placeholder="Jumlah">
-                                <input type="number" id="sp1_harga" placeholder="Harga (Rp)">
-                            </div>
-                        </div>
-
-                        <div class="sparepart-box">
-                            <strong>Sparepart 2</strong>
-                            <div class="form-grid">
-                                <input id="sp2_nama" placeholder="Nama Sparepart 2">
-                                <input id="sp2_kode" placeholder="Kode Sparepart">
-                                <input type="number" id="sp2_jumlah" placeholder="Jumlah">
-                                <input type="number" id="sp2_harga" placeholder="Harga (Rp)">
-                            </div>
-                        </div>
-
-                        <div class="sparepart-box">
-                            <strong>Sparepart 3</strong>
-                            <div class="form-grid">
-                                <input id="sp3_nama" placeholder="Nama Sparepart 3">
-                                <input id="sp3_kode" placeholder="Kode Sparepart">
-                                <input type="number" id="sp3_jumlah" placeholder="Jumlah">
-                                <input type="number" id="sp3_harga" placeholder="Harga (Rp)">
-                            </div>
-                        </div>
-
-                        <!-- 5. NOTIFIKASI -->
-                        <div class="form-section-title">5. Notifikasi</div>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Kirim Notifikasi</label>
-                                <select id="inpNotifikasi">
-                                    <option value="">— pilih notifikasi —</option>
-                                    <option value="Tanda Terima (WhatsApp)">Tanda Terima Service (Kirim via WhatsApp)</option>
-                                    <option value="Tanda Terima (Email)">Tanda Terima Service (Kirim via Email)</option>
-                                    <option value="Service Report (WhatsApp)">Service Report (Kirim via WhatsApp)</option>
-                                    <option value="Service Report (Email)">Service Report (Kirim via Email)</option>
-                                </select>
-                            </div>
-                        </div>
-                    `;
-                } else if(menu.startsWith('payment-')) {
-                    modalBody.innerHTML = `
-                        <div class="form-grid">
-                            <div class="form-group"><label>No. Tiket</label><input id="inpTicket" placeholder="JKT-2600001"></div>
-                            <div class="form-group"><label>Total Biaya (Rp)</label><input id="inpAmount" type="number" placeholder="150000"></div>
-                            <div class="form-group"><label>Metode Pembayaran</label><input id="inpMethod" placeholder="QRIS / Transfer"></div>
-                        </div>
-                    `;
-                } else if(menu.startsWith('inv-')) {
-                    modalBody.innerHTML = `
-                        <div class="form-grid">
-                            <div class="form-group"><label>Kode Spare Part</label><input id="inpCode" placeholder="PRT-001"></div>
-                            <div class="form-group"><label>Nama Spare Part</label><input id="inpPartName" placeholder="Cuff Tensimeter"></div>
-                            <div class="form-group"><label>Jumlah (Qty)</label><input id="inpQty" type="number" placeholder="50"></div>
-                        </div>
-                    `;
-                }
-                document.getElementById('modalForm').classList.remove('hidden');
+                const container = document.getElementById('formContainer-' + menuKey);
+                container.innerHTML = getTicketFormHTML(menuKey);
             }
 
-            function closeModal() {
-                document.getElementById('modalForm').classList.add('hidden');
+            function hideFormInPage(menuKey) {
+                const formView = document.getElementById('view-form-' + menuKey);
+                if(formView) formView.classList.add('hidden');
+                const tableView = document.getElementById('view-table-' + menuKey);
+                if(tableView) tableView.classList.remove('hidden');
             }
 
-            async function saveModalData() {
-                let payload = {};
-                let endpoint = '';
+            function getTicketFormHTML(menuKey) {
+                return `
+                    <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
+                        ℹ️ <strong>Nomor Tiket Otomatis:</strong> Format <code>XXX-2600001</code> akan dibuatkan secara otomatis oleh sistem setelah disave.
+                    </div>
 
-                if (currentActiveMenu.startsWith('service-')) {
-                    const name = document.getElementById('inpName').value;
-                    const phone = document.getElementById('inpPhone1').value;
-                    if(!name || !phone) return alert('Nama Pemilik dan No. HP/WhatsApp 1 Wajib Diisi!');
+                    <!-- 1. DATA PELANGGAN -->
+                    <div class="form-section-title">1. Data Pelanggan</div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Nama Pemilik <span class="required">*</span></label><input id="inpName" placeholder="Contoh: Budi Santoso"></div>
+                        <div class="form-group"><label>No. HP / WhatsApp 1 <span class="required">*</span></label><input id="inpPhone1" placeholder="081234567890"></div>
+                        <div class="form-group"><label>Nama Instansi</label><input id="inpInstansi" placeholder="PT / Rumah Sakit / Klinik"></div>
+                        <div class="form-group"><label>No. HP / WhatsApp 2</label><input id="inpPhone2" placeholder="081987654321"></div>
+                    </div>
+                    <div class="form-group"><label>Alamat Pemilik</label><textarea id="inpAddress" rows="2" placeholder="Alamat lengkap..."></textarea></div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Provinsi</label>
+                            <select id="inpProvinsi" onchange="updateCityDropdown()">
+                                <option value="">— pilih provinsi —</option>
+                                <option value="DKI Jakarta">DKI Jakarta</option>
+                                <option value="Jawa Barat">Jawa Barat</option>
+                                <option value="Banten">Banten</option>
+                                <option value="Jawa Tengah">Jawa Tengah</option>
+                                <option value="DI Yogyakarta">DI Yogyakarta</option>
+                                <option value="Jawa Timur">Jawa Timur</option>
+                                <option value="Bali">Bali</option>
+                                <option value="Sumatera Utara">Sumatera Utara</option>
+                                <option value="Sumatera Selatan">Sumatera Selatan</option>
+                                <option value="Kalimantan Timur">Kalimantan Timur</option>
+                                <option value="Sulawesi Selatan">Sulawesi Selatan</option>
+                                <option value="Lainnya">Lainnya</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Kota (pilih provinsi dulu)</label>
+                            <select id="inpKota">
+                                <option value="">— pilih kota —</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Tanggal Alat Diterima</label><input type="date" id="inpDateReceived"></div>
+                        <div class="form-group"><label>Tanggal Alat Selesai</label><input type="date" id="inpDateFinished"></div>
+                    </div>
 
-                    endpoint = '/api/v1/db/tickets/';
-                    payload = {
-                        service_type: currentActiveMenu.replace('service-', ''),
-                        customer_name: name,
-                        customer_phone: phone,
-                        branch_or_point: document.getElementById('inpProvinsi').value || null,
-                        device_model: document.getElementById('inpModel').value || 'HEM-7120',
-                        serial_number: document.getElementById('inpSN').value || null,
-                        complaint: document.getElementById('inpKeluhan').value || null
-                    };
-                } else if (currentActiveMenu.startsWith('payment-')) {
-                    endpoint = '/api/v1/db/payments/';
-                    payload = {
-                        service_type: currentActiveMenu.replace('payment-', ''),
-                        ticket_number: document.getElementById('inpTicket').value || 'JKT-2600001',
-                        amount: parseFloat(document.getElementById('inpAmount').value || 0),
-                        payment_method: document.getElementById('inpMethod').value || 'Transfer'
-                    };
-                }
+                    <!-- 2. DATA PRODUK -->
+                    <div class="form-section-title">2. Data Produk</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Produk Kategori</label>
+                            <select id="inpCategory" onchange="updateModelDropdown()">
+                                <option value="">— pilih kategori —</option>
+                                <option value="Arm BPM">Arm BPM</option>
+                                <option value="Wrist BPM">Wrist BPM</option>
+                                <option value="NEB-Comp">NEB-Comp</option>
+                                <option value="NEB-Mesh">NEB-Mesh</option>
+                                <option value="NEB-Ultra">NEB-Ultra</option>
+                                <option value="BCM">BCM</option>
+                                <option value="DWS">DWS</option>
+                                <option value="Thermo">Thermo</option>
+                                <option value="TENS">TENS</option>
+                                <option value="MEDICAL">MEDICAL</option>
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Model Alat (pilih kategori dulu)</label>
+                            <select id="inpModel">
+                                <option value="">— pilih model —</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Serial No. Alat</label><input id="inpSN" placeholder="SN2026xxxx"></div>
+                        <div class="form-group"><label>Aksesoris</label><input id="inpAccessories" placeholder="Cuff, Adaptor, Bag"></div>
+                        <div class="form-group">
+                            <label>Status Garansi</label>
+                            <select id="inpGaransi">
+                                <option value="">— pilih status —</option>
+                                <option value="Under Warranty">Under Warranty</option>
+                                <option value="Out of Warranty">Out of Warranty</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Warranty Period (tahun)</label>
+                            <select id="inpWarrantyPeriod">
+                                <option value="">— pilih —</option>
+                                <option value="1">1 Tahun</option>
+                                <option value="2">2 Tahun</option>
+                                <option value="3">3 Tahun</option>
+                                <option value="4">4 Tahun</option>
+                                <option value="5">5 Tahun</option>
+                                <option value="6">6 Tahun</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Asal Produk</label>
+                            <select id="inpAsalProduk">
+                                <option value="">— pilih asal —</option>
+                                <option value="LEU">LEU</option>
+                                <option value="EU-DRC">EU-DRC</option>
+                                <option value="AMS/IDC">AMS/IDC</option>
+                                <option value="APT/ TKO">APT/ TKO</option>
+                                <option value="CV/ PT/ RS">CV/ PT/ RS</option>
+                                <option value="ALPRO">ALPRO</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 3. DATA SERVIS -->
+                    <div class="form-section-title">3. Data Servis</div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Keluhan Pelanggan</label><input id="inpKeluhan" placeholder="Keluhan perangkat"></div>
+                        <div class="form-group"><label>Analisa Teknisi</label><input id="inpAnalisa" placeholder="Hasil diagnosa"></div>
+                        <div class="form-group"><label>Symptom (kode)</label><input id="inpSymptom" placeholder="Contoh: ERR-01"></div>
+                        <div class="form-group"><label>Leadtime (hari)</label><input type="number" id="inpLeadtime" value="1"></div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Catatan</label><input id="inpCatatan" placeholder="Catatan tambahan..."></div>
+                        <div class="form-group">
+                            <label>Remarks</label>
+                            <select id="inpRemarks">
+                                <option value="">— pilih remarks —</option>
+                                <option value="Compliance Check/ Sensor Check">Compliance Check/ Sensor Check</option>
+                                <option value="Repair">Repair</option>
+                                <option value="Replace Product/ Claim">Replace Product/ Claim</option>
+                                <option value="Unrepairable/ Return to Customer">Unrepairable/ Return to Customer</option>
+                                <option value="Disagree with Service Fee">Disagree with Service Fee</option>
+                                <option value="No Response">No Response</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Repair Status</label>
+                            <select id="inpRepairStatus">
+                                <option value="Diterima Service Center">Diterima Service Center</option>
+                                <option value="Diterima Pickup Center">Diterima Pickup Center</option>
+                                <option value="Diproses">Diproses</option>
+                                <option value="Selesai">Selesai</option>
+                                <option value="Diambil Pemilik">Diambil Pemilik</option>
+                                <option value="Dikirim via GED">Dikirim via GED</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 4. SPAREPART DIGUNAKAN -->
+                    <div class="form-section-title">4. Sparepart Digunakan</div>
+                    <small style="color:#666; display:block; margin-bottom:10px;">Mengisi kode/nama & jumlah di sini akan otomatis mengurangi stok sparepart di lokasi tiket ini.</small>
+
+                    <div class="sparepart-box">
+                        <strong>Sparepart 1</strong>
+                        <div class="form-grid">
+                            <input id="sp1_nama" placeholder="Nama Sparepart 1">
+                            <input id="sp1_kode" placeholder="Kode Sparepart">
+                            <input type="number" id="sp1_jumlah" placeholder="Jumlah">
+                            <input type="number" id="sp1_harga" placeholder="Harga (Rp)">
+                        </div>
+                    </div>
+
+                    <div class="sparepart-box">
+                        <strong>Sparepart 2</strong>
+                        <div class="form-grid">
+                            <input id="sp2_nama" placeholder="Nama Sparepart 2">
+                            <input id="sp2_kode" placeholder="Kode Sparepart">
+                            <input type="number" id="sp2_jumlah" placeholder="Jumlah">
+                            <input type="number" id="sp2_harga" placeholder="Harga (Rp)">
+                        </div>
+                    </div>
+
+                    <div class="sparepart-box">
+                        <strong>Sparepart 3</strong>
+                        <div class="form-grid">
+                            <input id="sp3_nama" placeholder="Nama Sparepart 3">
+                            <input id="sp3_kode" placeholder="Kode Sparepart">
+                            <input type="number" id="sp3_jumlah" placeholder="Jumlah">
+                            <input type="number" id="sp3_harga" placeholder="Harga (Rp)">
+                        </div>
+                    </div>
+
+                    <!-- 5. NOTIFIKASI -->
+                    <div class="form-section-title">5. Notifikasi</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Kirim Notifikasi</label>
+                            <select id="inpNotifikasi">
+                                <option value="">— pilih notifikasi —</option>
+                                <option value="Tanda Terima (WhatsApp)">Tanda Terima Service (Kirim via WhatsApp)</option>
+                                <option value="Tanda Terima (Email)">Tanda Terima Service (Kirim via Email)</option>
+                                <option value="Service Report (WhatsApp)">Service Report (Kirim via WhatsApp)</option>
+                                <option value="Service Report (Email)">Service Report (Kirim via Email)</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+            }
+
+            async function savePageFormData(menuKey) {
+                const name = document.getElementById('inpName').value;
+                const phone = document.getElementById('inpPhone1').value;
+                if(!name || !phone) return alert('Nama Pemilik dan No. HP/WhatsApp 1 Wajib Diisi!');
+
+                const endpoint = '/api/v1/db/tickets/';
+                const payload = {
+                    service_type: menuKey.replace('service-', ''),
+                    customer_name: name,
+                    customer_phone: phone,
+                    branch_or_point: document.getElementById('inpProvinsi').value || null,
+                    device_model: document.getElementById('inpModel').value || 'HEM-7120',
+                    serial_number: document.getElementById('inpSN').value || null,
+                    complaint: document.getElementById('inpKeluhan').value || null
+                };
 
                 try {
                     const res = await fetch(endpoint, {
@@ -809,8 +784,8 @@ def admin_dashboard_page():
                     if (res.ok) {
                         const savedData = await res.json();
                         alert(`BERHASIL! Tiket ${savedData.ticket_number || 'baru'} berhasil dibuat dan tersimpan ke Database Neon.tech!`);
-                        closeModal();
-                        renderTableData(currentActiveMenu);
+                        hideFormInPage(menuKey);
+                        renderTableData(menuKey);
                         updateDashboardStats();
                     } else {
                         alert('Gagal menyimpan ke DB: ' + res.statusText);
