@@ -11,28 +11,24 @@ from app.models.schema import Base, ServiceTicket
 
 logger = logging.getLogger("uvicorn.error")
 
-# Ambil DATABASE_URL dari Environment Variable (Neon.tech / Railway PostgreSQL)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./local_crm.db")
 
-# Format prefix PostgreSQL dari postgres:// menjadi postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Pengaturan engine database
 if "sqlite" in DATABASE_URL:
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     engine = create_engine(
         DATABASE_URL,
-        pool_pre_ping=True,      # Menjaga koneksi PostgreSQL tetap hidup
-        pool_recycle=300,        # Mencegah disconnect timeout
+        pool_pre_ping=True,
+        pool_recycle=300,
         pool_size=10,
         max_overflow=20
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Inisialisasi tabel jika belum ada
 try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
@@ -66,23 +62,25 @@ def get_all_tickets(db: Session = Depends(get_db)):
     try:
         return db.query(ServiceTicket).order_by(desc(ServiceTicket.id)).all()
     except Exception as e:
-        logger.error(f"Error fetching tickets: {str(e)}")
+        logger.error(f"Error fetching all tickets: {str(e)}")
         return []
 
 @router.get("/tickets/{service_type}")
 def get_tickets(service_type: str, db: Session = Depends(get_db)):
     try:
-        tickets = db.query(ServiceTicket).filter(ServiceTicket.service_type == service_type).order_by(desc(ServiceTicket.id)).all()
-        if not tickets:
-            return db.query(ServiceTicket).order_by(desc(ServiceTicket.id)).all()
-        return tickets
+        # Filter ketat berdasarkan service_type (pusat / cabang / pickup)
+        return db.query(ServiceTicket).filter(ServiceTicket.service_type == service_type).order_by(desc(ServiceTicket.id)).all()
     except Exception as e:
-        return db.query(ServiceTicket).order_by(desc(ServiceTicket.id)).all()
+        logger.error(f"Error fetching tickets for {service_type}: {str(e)}")
+        return []
 
 @router.post("/tickets/")
 def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
     try:
-        srv_type = ticket.service_type if ticket.service_type else "pusat"
+        srv_type = (ticket.service_type or "pusat").lower()
+        if srv_type not in ["pusat", "cabang", "pickup"]:
+            srv_type = "pusat"
+
         prefix_code = "JKT"
         if srv_type == "cabang":
             prefix_code = "CBG"
@@ -92,8 +90,9 @@ def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
         year_suffix = datetime.utcnow().strftime("%y")
         prefix_full = f"{prefix_code}-{year_suffix}"
 
-        count_total = db.query(ServiceTicket).count() + 1
-        ticket_num = f"{prefix_full}{count_total:05d}"
+        # Hitung urutan nomor tiket khusus per service_type
+        count_specific = db.query(ServiceTicket).filter(ServiceTicket.service_type == srv_type).count() + 1
+        ticket_num = f"{prefix_full}{count_specific:05d}"
 
         db_ticket = ServiceTicket(
             ticket_number=ticket_num,

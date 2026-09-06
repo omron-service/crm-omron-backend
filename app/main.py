@@ -330,9 +330,9 @@ def admin_dashboard_page():
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2a. Data Service - Pusat</h2>
                             <div class="action-header">
-                                <input type="text" id="search-service-pusat" class="search-input" placeholder="Cari tiket / nama / SN alat..." onkeyup="filterTable('service-pusat')">
+                                <input type="text" id="search-service-pusat" class="search-input" placeholder="Cari tiket / nama / SN..." onkeyup="filterTable('service-pusat')">
                                 <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
-                                <button class="btn btn-success" onclick="showFormInPage('service-pusat')">+ Tambah Tiket</button>
+                                <button class="btn btn-success" onclick="showFormInPage('service-pusat')">+ Tambah Tiket Pusat</button>
                             </div>
                         </div>
                         <table>
@@ -340,12 +340,12 @@ def admin_dashboard_page():
                                 <tr>
                                     <th>No. Tiket</th>
                                     <th>Pemilik</th>
-                                    <th>No. HP/WA 1</th>
+                                    <th>No. HP/WA</th>
                                     <th>Model Alat</th>
-                                    <th>Serial No. Alat</th>
-                                    <th>Status Garansi</th>
+                                    <th>Serial No.</th>
+                                    <th>Garansi</th>
                                     <th>Keluhan</th>
-                                    <th>Repair Status</th>
+                                    <th>Status</th>
                                     <th>Tgl Diterima</th>
                                 </tr>
                             </thead>
@@ -372,9 +372,9 @@ def admin_dashboard_page():
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2b. Data Service - Cabang</h2>
                             <div class="action-header">
-                                <input type="text" id="search-service-cabang" class="search-input" placeholder="Cari tiket / nama / SN alat..." onkeyup="filterTable('service-cabang')">
+                                <input type="text" id="search-service-cabang" class="search-input" placeholder="Cari tiket / nama / SN..." onkeyup="filterTable('service-cabang')">
                                 <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
-                                <button class="btn btn-success" onclick="showFormInPage('service-cabang')">+ Tambah Tiket</button>
+                                <button class="btn btn-success" onclick="showFormInPage('service-cabang')">+ Tambah Tiket Cabang</button>
                             </div>
                         </div>
                         <table>
@@ -384,9 +384,9 @@ def admin_dashboard_page():
                                     <th>Cabang</th>
                                     <th>Pemilik</th>
                                     <th>Model Alat</th>
-                                    <th>Serial No. Alat</th>
-                                    <th>Status Garansi</th>
-                                    <th>Repair Status</th>
+                                    <th>Serial No.</th>
+                                    <th>Garansi</th>
+                                    <th>Status</th>
                                     <th>Tgl Diterima</th>
                                 </tr>
                             </thead>
@@ -413,9 +413,9 @@ def admin_dashboard_page():
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2c. Data Service - Pickup Center</h2>
                             <div class="action-header">
-                                <input type="text" id="search-service-pickup" class="search-input" placeholder="Cari tiket / nama / SN alat..." onkeyup="filterTable('service-pickup')">
+                                <input type="text" id="search-service-pickup" class="search-input" placeholder="Cari tiket / nama / SN..." onkeyup="filterTable('service-pickup')">
                                 <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
-                                <button class="btn btn-success" onclick="showFormInPage('service-pickup')">+ Tambah Tiket</button>
+                                <button class="btn btn-success" onclick="showFormInPage('service-pickup')">+ Tambah Tiket Pickup</button>
                             </div>
                         </div>
                         <table>
@@ -425,8 +425,8 @@ def admin_dashboard_page():
                                     <th>Pickup Point</th>
                                     <th>Pemilik</th>
                                     <th>Model Alat</th>
-                                    <th>Serial No. Alat</th>
-                                    <th>Status Garansi</th>
+                                    <th>Serial No.</th>
+                                    <th>Garansi</th>
                                     <th>Status Kurir</th>
                                     <th>Tgl Diterima</th>
                                 </tr>
@@ -451,7 +451,7 @@ def admin_dashboard_page():
                 <!-- 3. STATUS PAYMENT SERVICE -->
                 <div id="tab-payment-pusat" class="tab-content hidden">
                     <div class="card">
-                        <h2>3a. Status Payment Service - Pusat (Tiket Out of Warranty)</h2>
+                        <h2>3a. Status Payment Service - Pusat (Out of Warranty)</h2>
                         <table>
                             <thead>
                                 <tr>
@@ -471,7 +471,7 @@ def admin_dashboard_page():
 
                 <div id="tab-payment-cabang" class="tab-content hidden">
                     <div class="card">
-                        <h2>3b. Status Payment Service - Cabang (Tiket Out of Warranty)</h2>
+                        <h2>3b. Status Payment Service - Cabang (Out of Warranty)</h2>
                         <table>
                             <thead>
                                 <tr>
@@ -491,7 +491,7 @@ def admin_dashboard_page():
 
                 <div id="tab-payment-pickup" class="tab-content hidden">
                     <div class="card">
-                        <h2>3c. Status Payment Service - Pickup Center (Tiket Out of Warranty)</h2>
+                        <h2>3c. Status Payment Service - Pickup Center (Out of Warranty)</h2>
                         <table>
                             <thead>
                                 <tr>
@@ -651,21 +651,24 @@ def admin_dashboard_page():
                     const res = await fetch('/api/v1/db/all-tickets');
                     if (res.ok) {
                         const allTickets = await res.json();
-                        rawServiceData['service-pusat'] = allTickets;
-                        rawServiceData['service-cabang'] = allTickets;
-                        rawServiceData['service-pickup'] = allTickets;
-                        rawServiceData['payment-pusat'] = allTickets;
-                        rawServiceData['payment-cabang'] = allTickets;
-                        rawServiceData['payment-pickup'] = allTickets;
+                        
+                        // Pemisahan ketat berdasarkan service_type
+                        rawServiceData['service-pusat'] = allTickets.filter(d => (d.service_type || 'pusat') === 'pusat');
+                        rawServiceData['service-cabang'] = allTickets.filter(d => d.service_type === 'cabang');
+                        rawServiceData['service-pickup'] = allTickets.filter(d => d.service_type === 'pickup');
+
+                        rawServiceData['payment-pusat'] = rawServiceData['service-pusat'];
+                        rawServiceData['payment-cabang'] = rawServiceData['service-cabang'];
+                        rawServiceData['payment-pickup'] = rawServiceData['service-pickup'];
 
                         const activeTab = document.querySelector('.tab-content:not(.hidden)').id.replace('tab-', '');
                         if(activeTab.startsWith('payment-')) {
-                            populatePaymentRows(activeTab, allTickets);
+                            populatePaymentRows(activeTab, rawServiceData[activeTab] || []);
                         } else {
-                            populateTableRows(activeTab, allTickets);
+                            populateTableRows(activeTab, rawServiceData[activeTab] || []);
                         }
                         await updateDashboardStats();
-                        alert(`BERHASIL! ${allTickets.length} tiket ditemukan dan disinkronisasi dari Database.`);
+                        alert(`BERHASIL! ${allTickets.length} tiket disinkronisasi dan dipisahkan sesuai lokasi masing-masing.`);
                     } else {
                         alert("Gagal sinkronisasi data dari DB (HTTP " + res.status + ")");
                     }
@@ -679,17 +682,18 @@ def admin_dashboard_page():
                     const res = await fetch('/api/v1/db/all-tickets');
                     if(res.ok) {
                         const data = await res.json();
-                        document.getElementById('statPusat').innerText = data.length;
-                        document.getElementById('statCabang').innerText = data.filter(d=>d.service_type==='cabang').length;
-                        document.getElementById('statPickup').innerText = data.filter(d=>d.service_type==='pickup').length;
+                        document.getElementById('statPusat').innerText = data.filter(d => (d.service_type || 'pusat') === 'pusat').length;
+                        document.getElementById('statCabang').innerText = data.filter(d => d.service_type === 'cabang').length;
+                        document.getElementById('statPickup').innerText = data.filter(d => d.service_type === 'pickup').length;
                     }
                 } catch(e) {}
             }
 
             async function renderTableData(menu) {
                 let endpoint = '/api/v1/db/all-tickets';
-                if (menu.startsWith('inv-')) {
-                    endpoint = '/api/v1/db/inventory/' + (menu.includes('pusat') ? 'pusat' : 'cabang');
+                if (menu.startsWith('service-') || menu.startsWith('payment-')) {
+                    const srvType = menu.replace('service-', '').replace('payment-', '');
+                    endpoint = '/api/v1/db/tickets/' + srvType;
                 }
 
                 try {
@@ -727,7 +731,7 @@ def admin_dashboard_page():
                             <td><span class="badge badge-lunas">${d.status||'Diproses'}</span></td>
                             <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
                         </tr>
-                    `).join('') : `<tr><td colspan="9" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                    `).join('') : `<tr><td colspan="9" style="text-align:center;">Belum ada data di lokasi ini</td></tr>`;
                 } else if(menu === 'inv-pusat-list') {
                     document.getElementById('tableInvPusatList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.category||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
                 }
@@ -753,7 +757,7 @@ def admin_dashboard_page():
                             <button class="btn btn-success" onclick="generatePaymentCode('${d.ticket_number}')">Generate Code</button>
                         </td>
                     </tr>
-                `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran.</td></tr>`;
+                `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran di lokasi ini.</td></tr>`;
             }
 
             function openInputPrice(ticketNum) {
@@ -778,7 +782,7 @@ def admin_dashboard_page():
                         body: JSON.stringify({ ticket_number: ticket, total_price: total })
                     });
                     if(res.ok) {
-                        alert(`Harga Servis untuk Tiket ${ticket} Berhasil Disimpan ke Database!\nTotal Biaya: Rp ${total.toLocaleString('id-ID')}`);
+                        alert(`Harga Servis untuk Tiket ${ticket} Berhasil Disimpan!\nTotal Biaya: Rp ${total.toLocaleString('id-ID')}`);
                         closePriceModal();
                         const activeTab = document.querySelector('.tab-content:not(.hidden)').id.replace('tab-', '');
                         renderTableData(activeTab);
@@ -790,7 +794,7 @@ def admin_dashboard_page():
 
             function generatePaymentCode(ticketNum) {
                 const randomCode = 'PAY-' + Math.floor(100000 + Math.random() * 900000);
-                alert(`SUCCESS! Integrated with Payment Gateway.\n\nKode Payment Tiket ${ticketNum}:\n${randomCode}\n(Siap dikirimkan ke Pelanggan via WhatsApp / Email)`);
+                alert(`SUCCESS! Integrated with Payment Gateway.\n\nKode Payment Tiket ${ticketNum}:\n${randomCode}`);
             }
 
             function filterTable(menu) {
@@ -845,9 +849,12 @@ def admin_dashboard_page():
             }
 
             function getTicketFormHTML(menuKey) {
+                const prefixMap = { 'service-pusat': 'JKT', 'service-cabang': 'CBG', 'service-pickup': 'PKP' };
+                const locPrefix = prefixMap[menuKey] || 'JKT';
+
                 return `
                     <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
-                        ℹ️ <strong>Nomor Tiket Otomatis Continuously:</strong> Sistem akan otomatis mengecek nomor urut tiket terakhir di DB (contoh: <code>JKT-2600001</code> → <code>JKT-2600002</code>).
+                        ℹ️ <strong>Nomor Tiket Otomatis Kategori ${locPrefix}:</strong> Tiket baru akan otomatis dibuatkan nomor khusus kategori ini (Contoh: <code>${locPrefix}-2600001</code>).
                     </div>
 
                     <div class="form-section-title">1. Data Pelanggan</div>
@@ -1023,8 +1030,11 @@ def admin_dashboard_page():
                     return alert('Nama Pemilik dan No. HP/WhatsApp 1 Wajib Diisi!');
                 }
 
+                // Ambil service_type yang benar dari menuKey (pusat / cabang / pickup)
+                const srvType = menuKey.replace('service-', '');
+
                 const payload = {
-                    service_type: menuKey.replace('service-', ''),
+                    service_type: srvType,
                     customer_name: name,
                     customer_phone: phone,
                     branch_or_point: getVal('inpProvinsi') || '-',
@@ -1044,7 +1054,7 @@ def admin_dashboard_page():
                     const resData = await res.json();
 
                     if (res.ok) {
-                        alert(`BERHASIL! Tiket baru ${resData.ticket_number} berhasil dibuat dan tersimpan!`);
+                        alert(`BERHASIL! Tiket baru ${resData.ticket_number} berhasil dibuat khusus di ${srvType.toUpperCase()}!`);
                         hideFormInPage(menuKey);
                         renderTableData(menuKey);
                         updateDashboardStats();
