@@ -156,7 +156,11 @@ def admin_dashboard_page():
             .form-group { margin-bottom: 8px; }
             label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px; color: #444; }
             input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
-            .btn { background: #0056b3; color: white; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+            
+            .action-header { display: flex; gap: 10px; align-items: center; }
+            .search-input { width: 250px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+
+            .btn { background: #0056b3; color: white; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; text-decoration: none; display: inline-block; }
             .btn:hover { background: #004085; }
             .btn-danger { background: #dc3545; }
             .btn-success { background: #28a745; }
@@ -224,7 +228,6 @@ def admin_dashboard_page():
             <header>
                 <h1 id="pageTitle">Portal Management System</h1>
                 <div>
-                    <!-- Tombol Migrasi disembunyikan secara bawaan dengan class .hidden -->
                     <button id="btnSyncDb" class="btn btn-warning hidden" style="margin-right: 10px;" onclick="syncDatabase()">🔄 Migrasi / Sync DB</button>
                     <span id="userStatus" style="font-weight: bold; font-size: 13px; margin-right: 15px;">Belum Login</span>
                     <button id="btnLogout" class="btn btn-danger hidden" onclick="logout()">Logout</button>
@@ -271,10 +274,26 @@ def admin_dashboard_page():
                     <div id="view-table-service-pusat" class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2a. Data Service - Pusat</h2>
-                            <button class="btn btn-success" onclick="showFormInPage('service-pusat')">+ Tambah Tiket</button>
+                            <div class="action-header">
+                                <input type="text" id="search-service-pusat" class="search-input" placeholder="Cari tiket / nama / SN alat..." onkeyup="filterTable('service-pusat')">
+                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
+                                <button class="btn btn-success" onclick="showFormInPage('service-pusat')">+ Tambah Tiket</button>
+                            </div>
                         </div>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Pemilik</th><th>No. HP/WA 1</th><th>Model Alat</th><th>Keluhan</th><th>Repair Status</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>No. Tiket</th>
+                                    <th>Pemilik</th>
+                                    <th>No. HP/WA 1</th>
+                                    <th>Model Alat</th>
+                                    <th>Serial No. Alat</th>
+                                    <th>Status Garansi</th>
+                                    <th>Keluhan</th>
+                                    <th>Repair Status</th>
+                                    <th>Tgl Diterima</th>
+                                </tr>
+                            </thead>
                             <tbody id="tableServicePusat"></tbody>
                         </table>
                     </div>
@@ -297,10 +316,25 @@ def admin_dashboard_page():
                     <div id="view-table-service-cabang" class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2b. Data Service - Cabang</h2>
-                            <button class="btn btn-success" onclick="showFormInPage('service-cabang')">+ Tambah Tiket</button>
+                            <div class="action-header">
+                                <input type="text" id="search-service-cabang" class="search-input" placeholder="Cari tiket / nama / SN alat..." onkeyup="filterTable('service-cabang')">
+                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
+                                <button class="btn btn-success" onclick="showFormInPage('service-cabang')">+ Tambah Tiket</button>
+                            </div>
                         </div>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Cabang</th><th>Pemilik</th><th>Model Alat</th><th>Repair Status</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>No. Tiket</th>
+                                    <th>Cabang</th>
+                                    <th>Pemilik</th>
+                                    <th>Model Alat</th>
+                                    <th>Serial No. Alat</th>
+                                    <th>Status Garansi</th>
+                                    <th>Repair Status</th>
+                                    <th>Tgl Diterima</th>
+                                </tr>
+                            </thead>
                             <tbody id="tableServiceCabang"></tbody>
                         </table>
                     </div>
@@ -323,10 +357,25 @@ def admin_dashboard_page():
                     <div id="view-table-service-pickup" class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h2 style="margin: 0; border: none;">2c. Data Service - Pickup Center</h2>
-                            <button class="btn btn-success" onclick="showFormInPage('service-pickup')">+ Tambah Tiket</button>
+                            <div class="action-header">
+                                <input type="text" id="search-service-pickup" class="search-input" placeholder="Cari tiket / nama / SN alat..." onkeyup="filterTable('service-pickup')">
+                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
+                                <button class="btn btn-success" onclick="showFormInPage('service-pickup')">+ Tambah Tiket</button>
+                            </div>
                         </div>
                         <table>
-                            <thead><tr><th>No. Tiket</th><th>Pickup Point</th><th>Pemilik</th><th>Status Kurir</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>No. Tiket</th>
+                                    <th>Pickup Point</th>
+                                    <th>Pemilik</th>
+                                    <th>Model Alat</th>
+                                    <th>Serial No. Alat</th>
+                                    <th>Status Garansi</th>
+                                    <th>Status Kurir</th>
+                                    <th>Tgl Diterima</th>
+                                </tr>
+                            </thead>
                             <tbody id="tableServicePickup"></tbody>
                         </table>
                     </div>
@@ -421,6 +470,7 @@ def admin_dashboard_page():
 
         <script>
             let authToken = localStorage.getItem('omron_token') || '';
+            let rawServiceData = {};
 
             const cityData = {
                 "DKI Jakarta": ["Jakarta Pusat", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Jakarta Utara"],
@@ -465,7 +515,6 @@ def admin_dashboard_page():
                 document.getElementById('loginCard').classList.add('hidden');
                 document.getElementById('sidebar').classList.remove('hidden');
                 document.getElementById('btnLogout').classList.remove('hidden');
-                // Tampilkan tombol migrasi HANYA setelah login berhasil
                 document.getElementById('btnSyncDb').classList.remove('hidden');
                 document.getElementById('userStatus').innerText = 'Super Admin Active';
                 showTab('dashboard');
@@ -522,22 +571,71 @@ def admin_dashboard_page():
                     const res = await fetch(endpoint);
                     if (res.ok) {
                         const data = await res.json();
-                        
-                        if(menu === 'service-pusat') {
-                            document.getElementById('tableServicePusat').innerHTML = data.length ? data.map(d => `<tr><td><strong>${d.ticket_number}</strong></td><td>${d.customer_name}</td><td>${d.customer_phone}</td><td>${d.device_model}</td><td>${d.complaint||'-'}</td><td><span class="badge badge-lunas">${d.status||'Diproses'}</span></td></tr>`).join('') : `<tr><td colspan="6" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        } else if(menu === 'service-cabang') {
-                            document.getElementById('tableServiceCabang').innerHTML = data.length ? data.map(d => `<tr><td><strong>${d.ticket_number}</strong></td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td>${d.device_model}</td><td><span class="badge badge-pending">${d.status||'Diproses'}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        } else if(menu === 'service-pickup') {
-                            document.getElementById('tableServicePickup').innerHTML = data.length ? data.map(d => `<tr><td><strong>${d.ticket_number}</strong></td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td><span class="badge badge-lunas">${d.status||'Diterima'}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        } else if(menu === 'payment-pusat') {
-                            document.getElementById('tablePaymentPusat').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td>${d.payment_method||'-'}</td><td>${d.payment_code}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        } else if(menu === 'inv-pusat-list') {
-                            document.getElementById('tableInvPusatList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.category||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
-                        }
+                        rawServiceData[menu] = data; // Simpan untuk filter pencarian
+                        populateTableRows(menu, data);
                     }
                 } catch(e) {
                     console.error('Error fetching database:', e);
                 }
+            }
+
+            function populateTableRows(menu, data) {
+                if(menu === 'service-pusat') {
+                    document.getElementById('tableServicePusat').innerHTML = data.length ? data.map(d => `
+                        <tr>
+                            <td><strong>${d.ticket_number}</strong></td>
+                            <td>${d.customer_name}</td>
+                            <td>${d.customer_phone}</td>
+                            <td>${d.device_model}</td>
+                            <td>${d.serial_number||'-'}</td>
+                            <td>${d.warranty_status||'Out of Warranty'}</td>
+                            <td>${d.complaint||'-'}</td>
+                            <td><span class="badge badge-lunas">${d.status||'Diproses'}</span></td>
+                            <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="9" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                } else if(menu === 'service-cabang') {
+                    document.getElementById('tableServiceCabang').innerHTML = data.length ? data.map(d => `
+                        <tr>
+                            <td><strong>${d.ticket_number}</strong></td>
+                            <td>${d.branch_or_point||'-'}</td>
+                            <td>${d.customer_name}</td>
+                            <td>${d.device_model}</td>
+                            <td>${d.serial_number||'-'}</td>
+                            <td>${d.warranty_status||'Out of Warranty'}</td>
+                            <td><span class="badge badge-pending">${d.status||'Diproses'}</span></td>
+                            <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="8" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                } else if(menu === 'service-pickup') {
+                    document.getElementById('tableServicePickup').innerHTML = data.length ? data.map(d => `
+                        <tr>
+                            <td><strong>${d.ticket_number}</strong></td>
+                            <td>${d.branch_or_point||'-'}</td>
+                            <td>${d.customer_name}</td>
+                            <td>${d.device_model}</td>
+                            <td>${d.serial_number||'-'}</td>
+                            <td>${d.warranty_status||'Out of Warranty'}</td>
+                            <td><span class="badge badge-lunas">${d.status||'Diterima'}</span></td>
+                            <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="8" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                } else if(menu === 'payment-pusat') {
+                    document.getElementById('tablePaymentPusat').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td>${d.payment_method||'-'}</td><td>${d.payment_code}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                } else if(menu === 'inv-pusat-list') {
+                    document.getElementById('tableInvPusatList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.category||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                }
+            }
+
+            function filterTable(menu) {
+                const query = (document.getElementById('search-' + menu).value || '').toLowerCase();
+                const list = rawServiceData[menu] || [];
+                const filtered = list.filter(item => 
+                    (item.ticket_number || '').toLowerCase().includes(query) ||
+                    (item.customer_name || '').toLowerCase().includes(query) ||
+                    (item.serial_number || '').toLowerCase().includes(query)
+                );
+                populateTableRows(menu, filtered);
             }
 
             function updateCityDropdown() {
