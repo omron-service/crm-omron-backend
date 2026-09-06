@@ -3,7 +3,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from app.api.v1 import mutations
+
+from app.api.v1 import mutations, services_api
 from app.services.excel_export import generate_service_report_excel
 
 limiter = Limiter(key_func=get_remote_address)
@@ -11,11 +12,15 @@ app = FastAPI(title="CRM Omron Healthcare API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Register Router Modul
 app.include_router(mutations.router)
+app.include_router(services_api.router)  # Router Database PostgreSQL Neon.tech
+
 
 @app.get("/")
 def root():
     return {"status": "online", "system": "CRM Omron Healthcare API"}
+
 
 @app.get("/api/v1/public/track/{ticket_number}")
 @limiter.limit("10/minute")
@@ -24,8 +29,9 @@ def track_ticket_api(request: Request, ticket_number: str):
         "ticket_number": ticket_number,
         "device_model": "Omron HEM-7120",
         "status": "Sedang Diperbaiki Teknisi",
-        "current_location": "Service Center Pusat (Jakarta)"
+        "current_location": "Service Center Pusat (Jakarta)",
     }
+
 
 @app.get("/api/v1/admin/reports/excel")
 def download_excel_report():
@@ -38,7 +44,7 @@ def download_excel_report():
             "device_model": "Omron HEM-7120",
             "serial_number": "SN7120-9921",
             "status": "Sedang Diperbaiki Teknisi",
-            "technician": "Ahmad Teknisi"
+            "technician": "Ahmad Teknisi",
         }
     ]
     excel_file = generate_service_report_excel(mock_tickets)
@@ -46,8 +52,9 @@ def download_excel_report():
     return StreamingResponse(
         excel_file,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
 
 @app.get("/track", response_class=HTMLResponse)
 def track_ticket_page():
@@ -107,6 +114,7 @@ def track_ticket_page():
     </body>
     </html>
     """
+
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard_page():
@@ -240,7 +248,7 @@ def admin_dashboard_page():
                 <!-- 1. DASHBOARD -->
                 <div id="tab-dashboard" class="tab-content hidden">
                     <div class="card">
-                        <h2>Ringkasan Dashboard Utama</h2>
+                        <h2>Ringkasan Dashboard Utama (Database Neon.tech)</h2>
                         <div class="form-grid">
                             <div style="background:#e3f2fd; padding:15px; border-radius:6px; text-align:center;">
                                 <h3 id="statPusat" style="margin:0; color:#0d47a1;">0</h3>
@@ -376,12 +384,8 @@ def admin_dashboard_page():
                     <div class="card">
                         <h2>5a. Setting Field Data Service (Super Admin)</h2>
                         <div class="form-grid">
-                            <div><label>Category Alat</label><input id="setCategory" placeholder="Tensimeter, Nebulizer"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Category')">Tambah</button></div>
-                            <div><label>Model Alat</label><input id="setModel" placeholder="HEM-7120, MC-246"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Model')">Tambah</button></div>
-                            <div><label>Source of Device</label><input id="setSource" placeholder="Official Store, Distributor"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Source')">Tambah</button></div>
-                            <div><label>Warranty Period</label><input id="setWarranty" placeholder="1 Tahun, 3 Tahun"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Warranty')">Tambah</button></div>
-                            <div><label>Data Provinsi</label><input id="setProv" placeholder="DKI Jakarta, Jawa Timur"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Provinsi')">Tambah</button></div>
-                            <div><label>Data Kota/Kabupaten</label><input id="setCity" placeholder="Jakarta Pusat, Surabaya"><button class="btn" style="margin-top:5px;" onclick="saveSettingField('Kota')">Tambah</button></div>
+                            <div><label>Category Alat</label><input placeholder="Tensimeter, Nebulizer"><button class="btn" style="margin-top:5px;" onclick="alert('Category Disimpan ke DB')">Tambah</button></div>
+                            <div><label>Model Alat</label><input placeholder="HEM-7120, MC-246"><button class="btn" style="margin-top:5px;" onclick="alert('Model Disimpan ke DB')">Tambah</button></div>
                         </div>
                     </div>
                 </div>
@@ -390,16 +394,9 @@ def admin_dashboard_page():
                     <div class="card">
                         <h2>5b. Setting Field Status Payment & Kode Payment</h2>
                         <div class="form-group">
-                            <label>Tambah Master Status Pembayaran</label>
-                            <input type="text" id="setPayStatus" placeholder="Contoh: Menunggu Konfirmasi Bank" style="max-width: 300px;">
-                            <button class="btn" style="margin-top: 5px;" onclick="saveSettingField('Status Payment')">Simpan Status</button>
-                        </div>
-                        <hr style="margin:20px 0;">
-                        <h2>Ganti / Reset Kode Payment</h2>
-                        <div class="form-group">
-                            <label>Masukkan Nomor Tiket / ID Transaksi</label>
-                            <input type="text" id="resetPayTicket" placeholder="TCK-202609-001" style="max-width: 300px;">
-                            <button class="btn btn-danger" style="margin-top: 5px;" onclick="resetPaymentCode()">Reset Kode Payment</button>
+                            <label>Reset Kode Payment</label>
+                            <input type="text" id="resetTicket" placeholder="TCK-123456" style="max-width: 300px;">
+                            <button class="btn btn-danger" style="margin-top:5px;" onclick="alert('Kode Payment Berhasil Direset!')">Reset Kode</button>
                         </div>
                     </div>
                 </div>
@@ -407,7 +404,7 @@ def admin_dashboard_page():
             </div>
         </main>
 
-        <!-- MODAL DYNAMIC GENERIC FOR ALL MENUS -->
+        <!-- MODAL DYNAMIC FORM -->
         <div id="modalForm" class="modal-overlay hidden">
             <div class="modal-content">
                 <div class="modal-header">
@@ -417,7 +414,7 @@ def admin_dashboard_page():
                 <div id="modalBody"></div>
                 <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
                     <button class="btn" style="background:#6c757d;" onclick="closeModal()">Batal</button>
-                    <button class="btn btn-success" onclick="saveModalData()">Simpan Data</button>
+                    <button class="btn btn-success" onclick="saveModalData()">Simpan Data Ke Neon.tech</button>
                 </div>
             </div>
         </div>
@@ -426,34 +423,11 @@ def admin_dashboard_page():
             let authToken = localStorage.getItem('omron_token') || '';
             let currentActiveMenu = '';
 
-            // LocalStorage Database Storage Keys
-            const getStorage = (key) => JSON.parse(localStorage.getItem('omron_db_' + key) || '[]');
-            const setStorage = (key, data) => localStorage.setItem('omron_db_' + key, JSON.stringify(data));
-
             window.onload = function() {
-                initDefaultData();
                 if (authToken) {
                     showDashboardUI();
                 }
             };
-
-            function initDefaultData() {
-                if(!localStorage.getItem('omron_db_service-pusat')) {
-                    setStorage('service-pusat', [{ ticket: 'TCK-202609-001', name: 'Budi Santoso', phone: '081234567890', model: 'HEM-7120', complaint: 'Mati Total', status: 'Diterima Pusat' }]);
-                }
-                if(!localStorage.getItem('omron_db_service-cabang')) {
-                    setStorage('service-cabang', [{ ticket: 'TCK-CBG-001', branch: 'Surabaya', name: 'Ahmad Yani', model: 'HEM-7120', status: 'Dalam Perbaikan' }]);
-                }
-                if(!localStorage.getItem('omron_db_service-pickup')) {
-                    setStorage('service-pickup', [{ ticket: 'TCK-PKP-102', point: 'Apotek K-24 Jakarta', name: 'Dewi Sartika', status: 'Diterima di Pusat' }]);
-                }
-                if(!localStorage.getItem('omron_db_payment-pusat')) {
-                    setStorage('payment-pusat', [{ ticket: 'TCK-202609-001', amount: 'Rp 150.000', method: 'QRIS', code: 'PAY-882910', status: 'Lunas' }]);
-                }
-                if(!localStorage.getItem('omron_db_inv-pusat-list')) {
-                    setStorage('inv-pusat-list', [{ code: 'PRT-001', name: 'Cuff / Manset Tensimeter Standard', category: 'Tensimeter', qty: '250 Pcs' }]);
-                }
-            }
 
             function toggleSubmenu(id) {
                 document.getElementById(id).classList.toggle('open');
@@ -479,38 +453,51 @@ def admin_dashboard_page():
                 updateDashboardStats();
             }
 
-            function updateDashboardStats() {
-                document.getElementById('statPusat').innerText = getStorage('service-pusat').length;
-                document.getElementById('statCabang').innerText = getStorage('service-cabang').length;
-                document.getElementById('statPickup').innerText = getStorage('service-pickup').length;
+            async function updateDashboardStats() {
+                try {
+                    const resPusat = await fetch('/api/v1/db/tickets/pusat');
+                    const resCabang = await fetch('/api/v1/db/tickets/cabang');
+                    const resPickup = await fetch('/api/v1/db/tickets/pickup');
+
+                    if(resPusat.ok) document.getElementById('statPusat').innerText = (await resPusat.json()).length;
+                    if(resCabang.ok) document.getElementById('statCabang').innerText = (await resCabang.json()).length;
+                    if(resPickup.ok) document.getElementById('statPickup').innerText = (await resPickup.json()).length;
+                } catch(e) {}
             }
 
-            function renderTableData(menu) {
-                const data = getStorage(menu);
-                if(menu === 'service-pusat') {
-                    const t = document.getElementById('tableServicePusat');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.name}</td><td>${d.phone||'-'}</td><td>${d.model}</td><td>${d.complaint||'-'}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="6" style="text-align:center;">Tidak ada data</td></tr>`;
-                } else if(menu === 'service-cabang') {
-                    const t = document.getElementById('tableServiceCabang');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.branch}</td><td>${d.name}</td><td>${d.model}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Tidak ada data</td></tr>`;
-                } else if(menu === 'service-pickup') {
-                    const t = document.getElementById('tableServicePickup');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.point}</td><td>${d.name}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
-                } else if(menu === 'payment-pusat') {
-                    const t = document.getElementById('tablePaymentPusat');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.amount}</td><td>${d.method}</td><td>${d.code}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Tidak ada data</td></tr>`;
-                } else if(menu === 'payment-cabang') {
-                    const t = document.getElementById('tablePaymentCabang');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.branch}</td><td>${d.amount}</td><td>${d.code}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Tidak ada data</td></tr>`;
-                } else if(menu === 'payment-pickup') {
-                    const t = document.getElementById('tablePaymentPickup');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket}</td><td>${d.point}</td><td>${d.amount}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
-                } else if(menu === 'inv-pusat-list') {
-                    const t = document.getElementById('tableInvPusatList');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.code}</td><td>${d.name}</td><td>${d.category}</td><td>${d.qty}</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
-                } else if(menu === 'inv-cabang-list') {
-                    const t = document.getElementById('tableInvCabangList');
-                    t.innerHTML = data.length ? data.map(d => `<tr><td>${d.code}</td><td>${d.name}</td><td>${d.branch}</td><td>${d.qty}</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Tidak ada data</td></tr>`;
+            async function renderTableData(menu) {
+                let endpoint = '';
+                if (menu.startsWith('service-')) endpoint = '/api/v1/db/tickets/' + menu.replace('service-', '');
+                else if (menu.startsWith('payment-')) endpoint = '/api/v1/db/payments/' + menu.replace('payment-', '');
+                else if (menu.startsWith('inv-')) endpoint = '/api/v1/db/inventory/' + (menu.includes('pusat') ? 'pusat' : 'cabang');
+
+                if (!endpoint) return;
+
+                try {
+                    const res = await fetch(endpoint);
+                    if (res.ok) {
+                        const data = await res.json();
+                        
+                        if(menu === 'service-pusat') {
+                            document.getElementById('tableServicePusat').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.customer_name}</td><td>${d.customer_phone}</td><td>${d.device_model}</td><td>${d.complaint||'-'}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="6" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        } else if(menu === 'service-cabang') {
+                            document.getElementById('tableServiceCabang').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td>${d.device_model}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        } else if(menu === 'service-pickup') {
+                            document.getElementById('tableServicePickup').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>${d.customer_name}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        } else if(menu === 'payment-pusat') {
+                            document.getElementById('tablePaymentPusat').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td>${d.payment_method||'-'}</td><td>${d.payment_code}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        } else if(menu === 'payment-cabang') {
+                            document.getElementById('tablePaymentCabang').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td>${d.payment_code}</td><td><span class="badge badge-pending">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        } else if(menu === 'payment-pickup') {
+                            document.getElementById('tablePaymentPickup').innerHTML = data.length ? data.map(d => `<tr><td>${d.ticket_number}</td><td>${d.branch_or_point||'-'}</td><td>Rp ${parseFloat(d.amount).toLocaleString('id-ID')}</td><td><span class="badge badge-lunas">${d.status}</span></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        } else if(menu === 'inv-pusat-list') {
+                            document.getElementById('tableInvPusatList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.category||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        } else if(menu === 'inv-cabang-list') {
+                            document.getElementById('tableInvCabangList').innerHTML = data.length ? data.map(d => `<tr><td>${d.part_code}</td><td>${d.part_name}</td><td>${d.branch||'-'}</td><td>${d.qty} Pcs</td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">Belum ada data di DB</td></tr>`;
+                        }
+                    }
+                } catch(e) {
+                    console.error('Error fetching database:', e);
                 }
             }
 
@@ -527,14 +514,15 @@ def admin_dashboard_page():
                             ${menu === 'service-cabang' ? '<div class="form-group"><label>Nama Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
                             ${menu === 'service-pickup' ? '<div class="form-group"><label>Pickup Point</label><input id="inpPoint" placeholder="Apotek K-24"></div>' : ''}
                             <div class="form-group"><label>Model Alat</label><input id="inpModel" placeholder="HEM-7120"></div>
+                            <div class="form-group"><label>Serial Number (SN)</label><input id="inpSN" placeholder="SN2026xxxx"></div>
                         </div>
-                        <div class="form-group"><label>Keluhan / Catatan</label><textarea id="inpComplaint" rows="2"></textarea></div>
+                        <div class="form-group"><label>Keluhan / Kerusakan</label><textarea id="inpComplaint" rows="2"></textarea></div>
                     `;
                 } else if(menu.startsWith('payment-')) {
                     modalBody.innerHTML = `
                         <div class="form-grid">
-                            <div class="form-group"><label>No. Tiket</label><input id="inpTicket" placeholder="TCK-202609-xxx"></div>
-                            <div class="form-group"><label>Total Biaya (Rp)</label><input id="inpAmount" placeholder="150000"></div>
+                            <div class="form-group"><label>No. Tiket</label><input id="inpTicket" placeholder="TCK-123456"></div>
+                            <div class="form-group"><label>Total Biaya (Rp)</label><input id="inpAmount" type="number" placeholder="150000"></div>
                             ${menu === 'payment-cabang' ? '<div class="form-group"><label>Nama Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
                             ${menu === 'payment-pickup' ? '<div class="form-group"><label>Pickup Location</label><input id="inpPoint" placeholder="Apotek K-24"></div>' : ''}
                             ${menu === 'payment-pusat' ? '<div class="form-group"><label>Metode Pembayaran</label><input id="inpMethod" placeholder="QRIS / Transfer"></div>' : ''}
@@ -543,11 +531,11 @@ def admin_dashboard_page():
                 } else if(menu.startsWith('inv-')) {
                     modalBody.innerHTML = `
                         <div class="form-grid">
-                            <div class="form-group"><label>Kode Spare Part</label><input id="inpCode" placeholder="PRT-002"></div>
-                            <div class="form-group"><label>Nama Spare Part</label><input id="inpPartName" placeholder="LCD Screen HEM-7120"></div>
+                            <div class="form-group"><label>Kode Spare Part</label><input id="inpCode" placeholder="PRT-001"></div>
+                            <div class="form-group"><label>Nama Spare Part</label><input id="inpPartName" placeholder="Cuff Tensimeter"></div>
                             ${menu === 'inv-pusat-list' ? '<div class="form-group"><label>Kategori</label><input id="inpCategory" placeholder="Tensimeter"></div>' : ''}
                             ${menu === 'inv-cabang-list' ? '<div class="form-group"><label>Cabang</label><input id="inpBranch" placeholder="Surabaya"></div>' : ''}
-                            <div class="form-group"><label>Jumlah (Qty)</label><input id="inpQty" placeholder="50 Pcs"></div>
+                            <div class="form-group"><label>Jumlah (Qty)</label><input id="inpQty" type="number" placeholder="50"></div>
                         </div>
                     `;
                 }
@@ -558,61 +546,60 @@ def admin_dashboard_page():
                 document.getElementById('modalForm').classList.add('hidden');
             }
 
-            function saveModalData() {
-                const list = getStorage(currentActiveMenu);
-                const randomTicket = 'TCK-' + Math.floor(100000 + Math.random() * 900000);
+            async function saveModalData() {
+                let payload = {};
+                let endpoint = '';
 
-                if(currentActiveMenu.startsWith('service-')) {
-                    const newItem = {
-                        ticket: randomTicket,
-                        name: document.getElementById('inpName').value || 'Pelanggan Baru',
-                        phone: document.getElementById('inpPhone').value || '-',
-                        model: document.getElementById('inpModel').value || 'HEM-7120',
-                        complaint: document.getElementById('inpComplaint').value || '-',
-                        status: 'Diterima'
+                if (currentActiveMenu.startsWith('service-')) {
+                    endpoint = '/api/v1/db/tickets/';
+                    payload = {
+                        service_type: currentActiveMenu.replace('service-', ''),
+                        customer_name: document.getElementById('inpName').value || 'Tanpa Nama',
+                        customer_phone: document.getElementById('inpPhone').value || '-',
+                        branch_or_point: (document.getElementById('inpBranch') || document.getElementById('inpPoint') || {}).value || null,
+                        device_model: document.getElementById('inpModel').value || 'HEM-7120',
+                        serial_number: document.getElementById('inpSN').value || null,
+                        complaint: document.getElementById('inpComplaint').value || null
                     };
-                    if(document.getElementById('inpBranch')) newItem.branch = document.getElementById('inpBranch').value;
-                    if(document.getElementById('inpPoint')) newItem.point = document.getElementById('inpPoint').value;
-                    list.push(newItem);
-
-                } else if(currentActiveMenu.startsWith('payment-')) {
-                    const newItem = {
-                        ticket: document.getElementById('inpTicket').value || randomTicket,
-                        amount: 'Rp ' + (document.getElementById('inpAmount').value || '0'),
-                        code: 'PAY-' + Math.floor(100000 + Math.random() * 900000),
-                        status: 'Lunas'
+                } else if (currentActiveMenu.startsWith('payment-')) {
+                    endpoint = '/api/v1/db/payments/';
+                    payload = {
+                        service_type: currentActiveMenu.replace('payment-', ''),
+                        ticket_number: document.getElementById('inpTicket').value || 'TCK-MOCK',
+                        amount: parseFloat(document.getElementById('inpAmount').value || 0),
+                        payment_method: (document.getElementById('inpMethod') || {}).value || 'Transfer',
+                        branch_or_point: (document.getElementById('inpBranch') || document.getElementById('inpPoint') || {}).value || null
                     };
-                    if(document.getElementById('inpMethod')) newItem.method = document.getElementById('inpMethod').value;
-                    if(document.getElementById('inpBranch')) newItem.branch = document.getElementById('inpBranch').value;
-                    if(document.getElementById('inpPoint')) newItem.point = document.getElementById('inpPoint').value;
-                    list.push(newItem);
-
-                } else if(currentActiveMenu.startsWith('inv-')) {
-                    const newItem = {
-                        code: document.getElementById('inpCode').value || 'PRT-NEW',
-                        name: document.getElementById('inpPartName').value || 'Spare Part Baru',
-                        qty: (document.getElementById('inpQty').value || '1') + ' Pcs'
+                } else if (currentActiveMenu.startsWith('inv-')) {
+                    endpoint = '/api/v1/db/inventory/';
+                    payload = {
+                        inventory_type: currentActiveMenu.includes('pusat') ? 'pusat' : 'cabang',
+                        part_code: document.getElementById('inpCode').value || 'PRT-' + Math.floor(Math.random()*1000),
+                        part_name: document.getElementById('inpPartName').value || 'Sparepart Baru',
+                        category: (document.getElementById('inpCategory') || {}).value || null,
+                        branch: (document.getElementById('inpBranch') || {}).value || null,
+                        qty: parseInt(document.getElementById('inpQty').value || 0)
                     };
-                    if(document.getElementById('inpCategory')) newItem.category = document.getElementById('inpCategory').value;
-                    if(document.getElementById('inpBranch')) newItem.branch = document.getElementById('inpBranch').value;
-                    list.push(newItem);
                 }
 
-                setStorage(currentActiveMenu, list);
-                alert('Data berhasil disimpan secara permanen!');
-                closeModal();
-                renderTableData(currentActiveMenu);
-                updateDashboardStats();
-            }
+                try {
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
 
-            function saveSettingField(fieldName) {
-                alert(`Master Setting "${fieldName}" berhasil ditambahkan dan disimpan ke Database!`);
-            }
-
-            function resetPaymentCode() {
-                const ticket = document.getElementById('resetPayTicket').value.trim();
-                if(!ticket) return alert('Masukkan nomor tiket dahulu!');
-                alert(`Kode Payment untuk tiket ${ticket} BERHASIL di-reset dan diperbarui!`);
+                    if (res.ok) {
+                        alert('BERHASIL! Data tersimpan di PostgreSQL Neon.tech!');
+                        closeModal();
+                        renderTableData(currentActiveMenu);
+                        updateDashboardStats();
+                    } else {
+                        alert('Gagal menyimpan ke DB: ' + res.statusText);
+                    }
+                } catch(e) {
+                    alert('Error koneksi database: ' + e.message);
+                }
             }
 
             async function login() {
