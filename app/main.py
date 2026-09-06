@@ -652,10 +652,10 @@ def admin_dashboard_page():
                     if (res.ok) {
                         const allTickets = await res.json();
                         
-                        // Pemisahan ketat berdasarkan service_type
-                        rawServiceData['service-pusat'] = allTickets.filter(d => (d.service_type || 'pusat') === 'pusat');
-                        rawServiceData['service-cabang'] = allTickets.filter(d => d.service_type === 'cabang');
-                        rawServiceData['service-pickup'] = allTickets.filter(d => d.service_type === 'pickup');
+                        // Pemisahan spesifik & ketat
+                        rawServiceData['service-pusat'] = allTickets.filter(d => (d.service_type || 'pusat').toLowerCase() === 'pusat');
+                        rawServiceData['service-cabang'] = allTickets.filter(d => (d.service_type || '').toLowerCase() === 'cabang');
+                        rawServiceData['service-pickup'] = allTickets.filter(d => (d.service_type || '').toLowerCase() === 'pickup');
 
                         rawServiceData['payment-pusat'] = rawServiceData['service-pusat'];
                         rawServiceData['payment-cabang'] = rawServiceData['service-cabang'];
@@ -668,7 +668,7 @@ def admin_dashboard_page():
                             populateTableRows(activeTab, rawServiceData[activeTab] || []);
                         }
                         await updateDashboardStats();
-                        alert(`BERHASIL! ${allTickets.length} tiket disinkronisasi dan dipisahkan sesuai lokasi masing-masing.`);
+                        alert(`BERHASIL! ${allTickets.length} tiket disinkronisasi dan dipisahkan per lokasi.`);
                     } else {
                         alert("Gagal sinkronisasi data dari DB (HTTP " + res.status + ")");
                     }
@@ -682,14 +682,17 @@ def admin_dashboard_page():
                     const res = await fetch('/api/v1/db/all-tickets');
                     if(res.ok) {
                         const data = await res.json();
-                        document.getElementById('statPusat').innerText = data.filter(d => (d.service_type || 'pusat') === 'pusat').length;
-                        document.getElementById('statCabang').innerText = data.filter(d => d.service_type === 'cabang').length;
-                        document.getElementById('statPickup').innerText = data.filter(d => d.service_type === 'pickup').length;
+                        document.getElementById('statPusat').innerText = data.filter(d => (d.service_type || 'pusat').toLowerCase() === 'pusat').length;
+                        document.getElementById('statCabang').innerText = data.filter(d => (d.service_type || '').toLowerCase() === 'cabang').length;
+                        document.getElementById('statPickup').innerText = data.filter(d => (d.service_type || '').toLowerCase() === 'pickup').length;
                     }
                 } catch(e) {}
             }
 
             async function renderTableData(menu) {
+                // Reset/kosongkan tampilan tabel saat ganti tab agar tidak bertumpuk
+                populateTableRows(menu, []);
+
                 let endpoint = '/api/v1/db/all-tickets';
                 if (menu.startsWith('service-') || menu.startsWith('payment-')) {
                     const srvType = menu.replace('service-', '').replace('payment-', '');
@@ -1030,7 +1033,6 @@ def admin_dashboard_page():
                     return alert('Nama Pemilik dan No. HP/WhatsApp 1 Wajib Diisi!');
                 }
 
-                // Ambil service_type yang benar dari menuKey (pusat / cabang / pickup)
                 const srvType = menuKey.replace('service-', '');
 
                 const payload = {

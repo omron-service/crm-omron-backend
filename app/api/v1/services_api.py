@@ -1,7 +1,7 @@
 import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import create_engine, desc
+from sqlalchemy import create_engine, desc, func
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -68,8 +68,9 @@ def get_all_tickets(db: Session = Depends(get_db)):
 @router.get("/tickets/{service_type}")
 def get_tickets(service_type: str, db: Session = Depends(get_db)):
     try:
-        # Filter ketat berdasarkan service_type (pusat / cabang / pickup)
-        return db.query(ServiceTicket).filter(ServiceTicket.service_type == service_type).order_by(desc(ServiceTicket.id)).all()
+        srv = service_type.lower().strip()
+        # Filter strictly berdasarkan service_type tanpa fallback
+        return db.query(ServiceTicket).filter(func.lower(ServiceTicket.service_type) == srv).order_by(desc(ServiceTicket.id)).all()
     except Exception as e:
         logger.error(f"Error fetching tickets for {service_type}: {str(e)}")
         return []
@@ -77,7 +78,7 @@ def get_tickets(service_type: str, db: Session = Depends(get_db)):
 @router.post("/tickets/")
 def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
     try:
-        srv_type = (ticket.service_type or "pusat").lower()
+        srv_type = (ticket.service_type or "pusat").lower().strip()
         if srv_type not in ["pusat", "cabang", "pickup"]:
             srv_type = "pusat"
 
@@ -91,7 +92,7 @@ def create_ticket(ticket: TicketCreate, db: Session = Depends(get_db)):
         prefix_full = f"{prefix_code}-{year_suffix}"
 
         # Hitung urutan nomor tiket khusus per service_type
-        count_specific = db.query(ServiceTicket).filter(ServiceTicket.service_type == srv_type).count() + 1
+        count_specific = db.query(ServiceTicket).filter(func.lower(ServiceTicket.service_type) == srv_type).count() + 1
         ticket_num = f"{prefix_full}{count_specific:05d}"
 
         db_ticket = ServiceTicket(
