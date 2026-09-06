@@ -224,7 +224,8 @@ def admin_dashboard_page():
             <header>
                 <h1 id="pageTitle">Portal Management System</h1>
                 <div>
-                    <button class="btn btn-warning" style="margin-right: 10px;" onclick="syncDatabase()">🔄 Migrasi / Sync DB</button>
+                    <!-- Tombol Migrasi disembunyikan secara bawaan dengan class .hidden -->
+                    <button id="btnSyncDb" class="btn btn-warning hidden" style="margin-right: 10px;" onclick="syncDatabase()">🔄 Migrasi / Sync DB</button>
                     <span id="userStatus" style="font-weight: bold; font-size: 13px; margin-right: 15px;">Belum Login</span>
                     <button id="btnLogout" class="btn btn-danger hidden" onclick="logout()">Logout</button>
                 </div>
@@ -464,6 +465,8 @@ def admin_dashboard_page():
                 document.getElementById('loginCard').classList.add('hidden');
                 document.getElementById('sidebar').classList.remove('hidden');
                 document.getElementById('btnLogout').classList.remove('hidden');
+                // Tampilkan tombol migrasi HANYA setelah login berhasil
+                document.getElementById('btnSyncDb').classList.remove('hidden');
                 document.getElementById('userStatus').innerText = 'Super Admin Active';
                 showTab('dashboard');
             }
