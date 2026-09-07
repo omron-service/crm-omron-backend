@@ -1,9 +1,15 @@
-# Digunakan oleh Alembic Migration untuk mengenali seluruh Model DB
+# Digunakan oleh Alembic Migration untuk mengenali seluruh Model DB.
+#
+# PENTING: Base di sini berasal dari app.db.session (satu-satunya sumber Base
+# di seluruh project). Setiap model yang boleh dikenali Alembic HARUS diimpor
+# di sini, dan HANYA SEKALI - jangan ada dua class dengan __tablename__ yang
+# sama dari file berbeda (itu penyebab error "Table 'X' is already defined").
 from app.db.session import Base
 from app.models.enums import LocationType, UserRole, TicketStatus, PaymentStatusEnum, MutationStatus
-from app.models.user_location import Location, User
-from app.models.service import DeviceCategory, DeviceModel, ServiceTicket
+from app.models.user_location import Location
+from app.models.service import DeviceCategory, DeviceModel
 from app.models.inventory import SparePart, StockInventory, StockMutation
+from app.models.schema import ServiceTicket, User, LocationCounter
 
 __all__ = [
     "Base",
@@ -14,5 +20,6 @@ __all__ = [
     "ServiceTicket",
     "SparePart",
     "StockInventory",
-    "StockMutation"
+    "StockMutation",
+    "LocationCounter",
 ]

@@ -2,8 +2,15 @@ import os
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 
 logger = logging.getLogger("uvicorn.error")
+
+# SATU-SATUNYA Base untuk SELURUH aplikasi. Semua file model (schema.py,
+# user_location.py, service.py, inventory.py) WAJIB import Base dari sini,
+# supaya semuanya berbagi satu metadata yang sama dan Alembic bisa melihat
+# seluruh tabel sekaligus tanpa bentrok.
+Base = declarative_base()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./local_crm.db")
 
@@ -47,7 +54,7 @@ def init_db():
     - JANGAN PERNAH membuat ulang (recreate) tabel service_tickets untuk "membersihkan"
       struktur. Semua perubahan struktur = migration, bukan drop+create.
     """
-    from app.models.schema import Base  # import di sini supaya semua model sudah ter-load ke metadata
+    import app.db.base  # noqa: F401  (memastikan SEMUA model sudah ter-load ke metadata sebelum create_all)
 
     try:
         Base.metadata.create_all(bind=engine)
