@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, Path, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -13,17 +12,35 @@ from app.api.v1 import mutations, services_api, auth as auth_api, inventory_part
 from app.api.v1.services_api import _next_ticket_number
 from app.db.session import get_db, init_db
 from app.core.deps import get_current_user, require_department_access
+from app.core.limiter import limiter
 from app.models.schema import ServiceTicket, User
 from app.services.excel_export import generate_service_report_excel
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import logging
 
-limiter = Limiter(key_func=get_remote_address)
 logger = logging.getLogger("uvicorn.error")
 app = FastAPI(title="CRM Omron Healthcare API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """
+    Header keamanan HTTP dasar untuk semua response:
+    - X-Content-Type-Options: browser tidak menebak-nebak tipe konten (mencegah
+      trik MIME-sniffing yang bisa dipakai untuk serangan XSS).
+    - X-Frame-Options: halaman ini tidak bisa ditaruh di <iframe> situs lain
+      (mencegah clickjacking terhadap /admin).
+    - Referrer-Policy: URL lengkap (yang mungkin mengandung info sensitif di
+      query string) tidak ikut terkirim ke situs lain saat user klik link keluar.
+    """
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 @app.on_event("startup")
@@ -48,7 +65,12 @@ def root():
 
 @app.get("/api/v1/public/track/{ticket_number}")
 @limiter.limit("10/minute")
-def track_ticket_api(request: Request, ticket_number: str, phone: str = "", db: Session = Depends(get_db)):
+def track_ticket_api(
+    request: Request,
+    ticket_number: str = Path(max_length=50),
+    phone: str = Query(default="", max_length=30),
+    db: Session = Depends(get_db),
+):
     if not phone:
         raise HTTPException(status_code=400, detail="Nomor HP/WhatsApp wajib diisi untuk verifikasi.")
 
@@ -132,17 +154,22 @@ def download_excel_report(
 # Pusat lewat panel admin biasa).
 
 class PickupIntakeCreate(BaseModel):
-    customer_name: str
-    instansi_name: Optional[str] = None
-    customer_phone: str
-    customer_phone_2: Optional[str] = None
-    customer_address: Optional[str] = None
+    """
+    Batas panjang (max_length) SENGAJA diterapkan ketat di sini karena endpoint
+    ini publik/tanpa login - mencegah payload raksasa (potensi DoS ringan)
+    dikirim oleh siapa saja tanpa perlu terautentikasi lebih dulu.
+    """
+    customer_name: str = Field(max_length=100)
+    instansi_name: Optional[str] = Field(default=None, max_length=150)
+    customer_phone: str = Field(max_length=30)
+    customer_phone_2: Optional[str] = Field(default=None, max_length=30)
+    customer_address: Optional[str] = Field(default=None, max_length=500)
     received_date: Optional[datetime] = None
-    product_category: Optional[str] = None
-    device_model: Optional[str] = None
-    serial_number: Optional[str] = "-"
-    accessories: Optional[str] = None
-    complaint: Optional[str] = "-"
+    product_category: Optional[str] = Field(default=None, max_length=50)
+    device_model: Optional[str] = Field(default=None, max_length=100)
+    serial_number: Optional[str] = Field(default="-", max_length=50)
+    accessories: Optional[str] = Field(default=None, max_length=150)
+    complaint: Optional[str] = Field(default="-", max_length=1000)
 
 
 @app.post("/api/v1/public/pickup-intake")
@@ -251,6 +278,16 @@ def pickup_intake_page():
         </div>
 
         <script>
+            function esc(value) {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
             async function onCategoryChange() {
                 const category = document.getElementById('pCategory').value;
                 const modelSelect = document.getElementById('pModel');
@@ -263,7 +300,7 @@ def pickup_intake_page():
                     const res = await fetch(`/api/v1/device-models/public?category=${encodeURIComponent(category)}`);
                     const models = res.ok ? await res.json() : [];
                     modelSelect.innerHTML = models.length
-                        ? '<option value="">-- Pilih Model --</option>' + models.map(m => `<option value="${m.model_name}">${m.model_name}</option>`).join('')
+                        ? '<option value="">-- Pilih Model --</option>' + models.map(m => `<option value="${esc(m.model_name)}">${esc(m.model_name)}</option>`).join('')
                         : '<option value="">(Belum ada model utk kategori ini)</option>';
                 } catch(e) {
                     modelSelect.innerHTML = '<option value="">Gagal memuat model</option>';
@@ -375,6 +412,16 @@ def track_ticket_page():
         </div>
 
         <script>
+            function esc(value) {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
             async function trackTicket() {
                 const ticket = document.getElementById('ticketInput').value.trim();
                 const phone = document.getElementById('phoneInput').value.trim();
@@ -399,17 +446,17 @@ def track_ticket_page():
                     }
 
                     resultBox.innerHTML = `
-                        <strong>No. Tiket:</strong> ${data.ticket_number}<br>
-                        <strong>Nama Pemilik:</strong> ${data.customer_name}<br>
-                        <strong>Model Perangkat:</strong> ${data.device_model}<br>
-                        <strong>Status Servis:</strong> <span class="status-badge">${data.status}</span><br>
-                        <strong>Lokasi Perangkat:</strong> ${data.current_location}<br>
-                        <strong>Tanggal Diterima:</strong> ${data.created_at}
+                        <strong>No. Tiket:</strong> ${esc(data.ticket_number)}<br>
+                        <strong>Nama Pemilik:</strong> ${esc(data.customer_name)}<br>
+                        <strong>Model Perangkat:</strong> ${esc(data.device_model)}<br>
+                        <strong>Status Servis:</strong> <span class="status-badge">${esc(data.status)}</span><br>
+                        <strong>Lokasi Perangkat:</strong> ${esc(data.current_location)}<br>
+                        <strong>Tanggal Diterima:</strong> ${esc(data.created_at)}
                     `;
                 } catch(err) {
                     resultBox.style.display = 'none';
                     errorBox.style.display = 'block';
-                    errorBox.innerHTML = `⚠️ <strong>Gagal Verifikasi:</strong> ${err.message}`;
+                    errorBox.innerHTML = `⚠️ <strong>Gagal Verifikasi:</strong> ${esc(err.message)}`;
                 }
             }
         </script>
@@ -895,7 +942,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                             </div>
                             <table>
                                 <thead>
-                                    <tr><th>No. Tiket</th><th>Pemilik</th><th>Instansi</th><th>No. HP/WA</th><th>Model Alat</th><th>Serial No.</th><th>Garansi</th><th>Keluhan</th><th>Status</th><th>Tgl Diterima</th></tr>
+                                    <tr><th>No. Tiket</th><th>Pemilik</th><th>Instansi</th><th>No. HP/WA</th><th>Model Alat</th><th>Serial No.</th><th>Garansi</th><th>Keluhan</th><th>Status</th><th>Tgl Diterima</th><th>Aksi</th></tr>
                                 </thead>
                                 <tbody id="tableService-${k}"></tbody>
                             </table>
@@ -903,7 +950,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                         <div id="view-form-service-${k}" class="card hidden">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:2px solid #0056b3; padding-bottom:10px;">
-                                <h2 style="margin:0; border:none;">Form Input Tiket Servis - ${loc.label} (${loc.prefix})</h2>
+                                <h2 id="ticketFormTitle-${k}" style="margin:0; border:none;">Form Input Tiket Servis - ${loc.label} (${loc.prefix})</h2>
                                 <button class="btn btn-secondary" onclick="hideFormInPage('${k}')">← Kembali ke Tabel</button>
                             </div>
                             <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
@@ -1016,7 +1063,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                             <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
                                 <button class="btn btn-secondary" onclick="hideFormInPage('${k}')">Batal</button>
-                                <button class="btn btn-success" onclick="savePageFormData('${k}')">Simpan ke Data ${loc.label.toUpperCase()}</button>
+                                <button class="btn btn-success" id="ticketFormSaveBtn-${k}" onclick="savePageFormData('${k}')">Simpan ke Data ${loc.label.toUpperCase()}</button>
                             </div>
                         </div>
                     `;
@@ -1100,18 +1147,21 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (!el) return;
                 el.innerHTML = data.length ? data.map(d => `
                     <tr>
-                        <td><strong>${d.ticket_number}</strong></td>
-                        <td>${d.customer_name}</td>
-                        <td>${d.instansi_name || '-'}</td>
-                        <td>${d.customer_phone || '-'}</td>
-                        <td>${d.device_model}</td>
-                        <td>${d.serial_number || '-'}</td>
-                        <td>${d.warranty_status || 'Out of Warranty'}</td>
-                        <td>${d.complaint || '-'}</td>
-                        <td><span class="badge badge-lunas">${d.status || 'Diterima'}</span></td>
+                        <td><a href="#" onclick="openEditTicket('${esc(d.ticket_number)}', '${locKey}'); return false;" style="font-weight:bold; text-decoration:underline; color:#0056b3; cursor:pointer;" title="Klik untuk buka/edit tiket">${esc(d.ticket_number)}</a></td>
+                        <td>${esc(d.customer_name)}</td>
+                        <td>${esc(d.instansi_name) || '-'}</td>
+                        <td>${esc(d.customer_phone) || '-'}</td>
+                        <td>${esc(d.device_model)}</td>
+                        <td>${esc(d.serial_number) || '-'}</td>
+                        <td>${esc(d.warranty_status) || 'Out of Warranty'}</td>
+                        <td>${esc(d.complaint) || '-'}</td>
+                        <td><span class="badge badge-lunas">${esc(d.status) || 'Diterima'}</span></td>
                         <td>${d.received_date ? d.received_date.split('T')[0] : (d.created_at ? d.created_at.split('T')[0] : '-')}</td>
+                        <td style="text-align:center;">
+                            <a href="#" onclick="downloadTicketReport('${esc(d.ticket_number)}'); return false;" title="Download Service Report" style="font-weight:bold; text-decoration:underline; color:#0056b3; cursor:pointer;">D</a>
+                        </td>
                     </tr>
-                `).join('') : `<tr><td colspan="10" style="text-align:center;">Belum ada data di lokasi ini</td></tr>`;
+                `).join('') : `<tr><td colspan="11" style="text-align:center;">Belum ada data di lokasi ini</td></tr>`;
             }
 
             function populatePaymentRows(menu, data) {
@@ -1121,12 +1171,12 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (!el) return;
                 el.innerHTML = filtered.length ? filtered.map(d => `
                     <tr>
-                        <td><strong>${d.ticket_number}</strong></td>
-                        <td>${d.customer_name}</td>
-                        <td>${d.device_model}</td>
+                        <td><strong>${esc(d.ticket_number)}</strong></td>
+                        <td>${esc(d.customer_name)}</td>
+                        <td>${esc(d.device_model)}</td>
                         <td>Rp ${(d.total_price || 0).toLocaleString('id-ID')}</td>
-                        <td><code>${d.payment_code || '-'}</code></td>
-                        <td><span class="badge ${d.payment_status === 'Lunas' ? 'badge-lunas' : 'badge-pending'}">${d.payment_status || 'Belum Lunas'}</span></td>
+                        <td><code>${esc(d.payment_code) || '-'}</code></td>
+                        <td><span class="badge ${d.payment_status === 'Lunas' ? 'badge-lunas' : 'badge-pending'}">${esc(d.payment_status) || 'Belum Lunas'}</span></td>
                     </tr>
                 `).join('') : `<tr><td colspan="6" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran di lokasi ini.</td></tr>`;
             }
@@ -1138,10 +1188,115 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 });
             }
 
+            let currentEditingTicket = {}; // { [locKey]: null | "JKT-2600001" }
+
             function showFormInPage(locKey) {
+                currentEditingTicket[locKey] = null; // mode CREATE (bukan edit)
                 resetTicketForm(locKey);
+
+                const loc = LOCATIONS.find(l => l.key === locKey);
+                document.getElementById(`ticketFormTitle-${locKey}`).innerText =
+                    `Form Input Tiket Servis - ${loc.label} (${loc.prefix})`;
+                document.getElementById(`ticketFormSaveBtn-${locKey}`).innerText =
+                    `Simpan ke Data ${loc.label.toUpperCase()}`;
+
                 document.getElementById('view-table-service-' + locKey).classList.add('hidden');
                 document.getElementById('view-form-service-' + locKey).classList.remove('hidden');
+            }
+
+            async function openEditTicket(ticketNumber, locKey) {
+                // Dipanggil saat NOMOR TIKET diklik di tabel - memuat data tiket yang
+                // sudah ada ke form yang sama, lalu form disimpan lewat PUT (update),
+                // bukan POST (create baru).
+                try {
+                    const res = await authFetch(`/api/v1/db/tickets/detail/${encodeURIComponent(ticketNumber)}`);
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Gagal memuat data tiket.');
+                    }
+                    const t = await res.json();
+
+                    currentEditingTicket[locKey] = ticketNumber;
+                    await fillTicketForm(locKey, t);
+
+                    document.getElementById(`ticketFormTitle-${locKey}`).innerText = `Edit Tiket ${ticketNumber}`;
+                    document.getElementById(`ticketFormSaveBtn-${locKey}`).innerText = 'Update Tiket';
+
+                    document.getElementById('view-table-service-' + locKey).classList.add('hidden');
+                    document.getElementById('view-form-service-' + locKey).classList.remove('hidden');
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function fillTicketForm(locKey, t) {
+                const k = locKey;
+                setVal(`inpName-${k}`, t.customer_name || '');
+                setVal(`inpInstansi-${k}`, t.instansi_name || '');
+                setVal(`inpPhone1-${k}`, t.customer_phone || '');
+                setVal(`inpPhone2-${k}`, t.customer_phone_2 || '');
+                setVal(`inpAddress-${k}`, t.customer_address || '');
+                setVal(`inpReceivedDate-${k}`, t.received_date ? t.received_date.split('T')[0] : '');
+                setVal(`inpCompletedDate-${k}`, t.completed_date ? t.completed_date.split('T')[0] : '');
+
+                setVal(`inpProvince-${k}`, t.province || '');
+                onProvinceChange(k); // isi ulang dropdown Kota sesuai Provinsi
+                setVal(`inpCity-${k}`, t.city || '');
+
+                setVal(`inpCategory-${k}`, t.product_category || '');
+                if (t.product_category) {
+                    await onCategoryChange(k); // isi ulang dropdown Model sesuai Kategori (async, tunggu selesai)
+                }
+                setVal(`inpModel-${k}`, t.device_model || '');
+
+                setVal(`inpSN-${k}`, t.serial_number || '');
+                setVal(`inpAccessories-${k}`, t.accessories || '');
+                setVal(`inpWarrantyStatus-${k}`, t.warranty_status || 'Out of Warranty');
+                setVal(`inpWarrantyPeriod-${k}`, t.warranty_period || '');
+                setVal(`inpOrigin-${k}`, t.product_origin || '');
+
+                setVal(`inpKeluhan-${k}`, t.complaint || '');
+                setVal(`inpAnalysis-${k}`, t.technician_analysis || '');
+                setVal(`inpSymptom-${k}`, t.symptom_code || '');
+                setVal(`inpLeadtime-${k}`, t.leadtime_days != null ? t.leadtime_days : 1);
+                setVal(`inpRemarks-${k}`, t.remarks || '');
+                setVal(`inpStatus-${k}`, t.status || 'Diterima');
+                setVal(`inpNotes-${k}`, t.notes || '');
+
+                const spareparts = t.spareparts || [];
+                [1, 2, 3].forEach(n => {
+                    const sp = spareparts.find(s => s.slot_no === n);
+                    setVal(`inpSpName${n}-${k}`, sp && sp.name ? sp.name : '');
+                    setVal(`inpSpQty${n}-${k}`, sp && sp.quantity != null ? sp.quantity : '');
+                    setVal(`inpSpCode${n}-${k}`, sp && sp.code ? sp.code : '');
+                    setVal(`inpSpPrice${n}-${k}`, sp && sp.price != null ? sp.price : '');
+                });
+
+                document.getElementById(`inpNotifReceiptWA-${k}`).checked = !!t.notif_receipt_whatsapp;
+                document.getElementById(`inpNotifReceiptEmail-${k}`).checked = !!t.notif_receipt_email;
+                document.getElementById(`inpNotifReportWA-${k}`).checked = !!t.notif_report_whatsapp;
+                document.getElementById(`inpNotifReportEmail-${k}`).checked = !!t.notif_report_email;
+            }
+
+            async function downloadTicketReport(ticketNumber) {
+                try {
+                    const res = await authFetch(`/api/v1/db/tickets/${encodeURIComponent(ticketNumber)}/service-report`);
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Gagal mengunduh Service Report.');
+                    }
+                    const blob = await res.blob();
+                    const dlUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = dlUrl;
+                    a.download = `ServiceReport-OEC-${ticketNumber}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(dlUrl);
+                } catch(e) {
+                    alert(e.message);
+                }
             }
 
             function hideFormInPage(locKey) {
@@ -1203,6 +1358,19 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 });
             }
 
+            // Escape HTML untuk SEMUA data yang berasal dari database sebelum dimasukkan
+            // ke innerHTML - mencegah stored XSS (mis. dari form publik /pickup-intake
+            // yang tidak butuh login, atau input customer_name/complaint di form tiket).
+            function esc(value) {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
             function valOf(id) {
                 const el = document.getElementById(id);
                 return el ? el.value.trim() : '';
@@ -1261,16 +1429,30 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     notif_report_email: document.getElementById(`inpNotifReportEmail-${k}`).checked,
                 };
 
+                // Mode EDIT: PUT ke tiket yang sudah ada, tanpa mengirim service_type
+                // (lokasi tiket permanen sejak dibuat, tidak bisa diubah lewat edit).
+                const editingTicketNumber = currentEditingTicket[k];
+                const isEditing = !!editingTicketNumber;
+                if (isEditing) delete payload.service_type;
+
+                const url = isEditing
+                    ? `/api/v1/db/tickets/${encodeURIComponent(editingTicketNumber)}`
+                    : '/api/v1/db/tickets/';
+                const method = isEditing ? 'PUT' : 'POST';
+
                 try {
-                    const res = await authFetch('/api/v1/db/tickets/', {
-                        method: 'POST',
+                    const res = await authFetch(url, {
+                        method: method,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
                     const resData = await res.json();
 
                     if (res.ok) {
-                        alert(`BERHASIL! Tiket ${resData.ticket_number} berhasil masuk khusus ke Data ${k.toUpperCase()}!`);
+                        alert(isEditing
+                            ? `BERHASIL! Tiket ${resData.ticket_number} berhasil diupdate.`
+                            : `BERHASIL! Tiket ${resData.ticket_number} berhasil masuk khusus ke Data ${k.toUpperCase()}!`);
+                        currentEditingTicket[k] = null;
                         hideFormInPage(k);
                         renderTableData('service-' + k);
                         updateDashboardStats();
@@ -1322,10 +1504,10 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     const el = document.getElementById('tableUsers');
                     el.innerHTML = users.map(u => `
                         <tr>
-                            <td>${u.full_name}</td>
-                            <td>${u.email}</td>
-                            <td>${u.role}</td>
-                            <td>${u.department || '-'}</td>
+                            <td>${esc(u.full_name)}</td>
+                            <td>${esc(u.email)}</td>
+                            <td>${esc(u.role)}</td>
+                            <td>${esc(u.department) || '-'}</td>
                             <td><span class="badge ${u.is_active ? 'badge-active' : 'badge-inactive'}">${u.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
                             <td>
                                 ${u.is_active
@@ -1391,8 +1573,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     const el = document.getElementById('tableDeviceModels');
                     el.innerHTML = models.length ? models.map(m => `
                         <tr>
-                            <td>${m.category}</td>
-                            <td>${m.model_name}</td>
+                            <td>${esc(m.category)}</td>
+                            <td>${esc(m.model_name)}</td>
                             <td><button class="btn btn-danger" onclick="deactivateDeviceModel(${m.id})">Nonaktifkan</button></td>
                         </tr>
                     `).join('') : `<tr><td colspan="3" style="text-align:center;">Belum ada model alat ditambahkan.</td></tr>`;
@@ -1623,8 +1805,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     const data = await res.json();
                     el.innerHTML = data.length ? data.map(d => `
                         <tr>
-                            <td><strong>${d.code}</strong></td>
-                            <td>${d.name || '-'}</td>
+                            <td><strong>${esc(d.code)}</strong></td>
+                            <td>${esc(d.name) || '-'}</td>
                             <td>${d.quantity}</td>
                             <td>Rp ${(d.unit_price || 0).toLocaleString('id-ID')}</td>
                             <td>${d.updated_at ? d.updated_at.split('T')[0] : '-'}</td>
