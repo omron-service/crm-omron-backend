@@ -914,6 +914,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
             }
 
             function showFormInPage(locKey) {
+                resetTicketForm(locKey);
                 document.getElementById('view-table-service-' + locKey).classList.add('hidden');
                 document.getElementById('view-form-service-' + locKey).classList.remove('hidden');
             }
@@ -923,6 +924,58 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (formView) formView.classList.add('hidden');
                 const tableView = document.getElementById('view-table-service-' + locKey);
                 if (tableView) tableView.classList.remove('hidden');
+            }
+
+            function setVal(id, value) {
+                const el = document.getElementById(id);
+                if (el) el.value = value;
+            }
+
+            function resetTicketForm(locKey) {
+                // Dipanggil setiap kali form "+ Input Tiket" dibuka, supaya data dari
+                // pengisian sebelumnya tidak ikut terbawa (form selalu mulai kosong).
+                const k = locKey;
+
+                setVal(`inpName-${k}`, '');
+                setVal(`inpInstansi-${k}`, '');
+                setVal(`inpPhone1-${k}`, '');
+                setVal(`inpPhone2-${k}`, '');
+                setVal(`inpAddress-${k}`, '');
+                setVal(`inpReceivedDate-${k}`, '');
+                setVal(`inpCompletedDate-${k}`, '');
+
+                setVal(`inpProvince-${k}`, '');
+                onProvinceChange(k);  // ikut kosongkan & reset dropdown Kota
+
+                setVal(`inpCategory-${k}`, '');
+                const modelSelect = document.getElementById(`inpModel-${k}`);
+                if (modelSelect) modelSelect.innerHTML = `<option value="">-- Pilih Kategori dulu --</option>`;
+
+                setVal(`inpSN-${k}`, '');
+                setVal(`inpAccessories-${k}`, '');
+                setVal(`inpWarrantyStatus-${k}`, 'Out of Warranty');
+                setVal(`inpWarrantyPeriod-${k}`, '');
+                setVal(`inpOrigin-${k}`, '');
+
+                setVal(`inpKeluhan-${k}`, '');
+                setVal(`inpAnalysis-${k}`, '');
+                setVal(`inpSymptom-${k}`, '');
+                setVal(`inpLeadtime-${k}`, '1');
+                setVal(`inpRemarks-${k}`, '');
+                setVal(`inpStatus-${k}`, 'Diterima');
+                setVal(`inpNotes-${k}`, '');
+
+                [1, 2, 3].forEach(n => {
+                    setVal(`inpSpName${n}-${k}`, '');
+                    setVal(`inpSpQty${n}-${k}`, '');
+                    setVal(`inpSpCode${n}-${k}`, '');
+                    setVal(`inpSpPrice${n}-${k}`, '');
+                });
+
+                ['inpNotifReceiptWA', 'inpNotifReceiptEmail', 'inpNotifReportWA', 'inpNotifReportEmail'].forEach(prefix => {
+                    const el = document.getElementById(`${prefix}-${k}`);
+                    if (el) el.checked = false;
+                });
             }
 
             function valOf(id) {
