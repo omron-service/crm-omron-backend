@@ -12,8 +12,8 @@ from app.db.session import Base
 class ServiceTicket(Base):
     """
     TIDAK ADA KOLOM LAMA YANG DIHAPUS ATAU DIUBAH DI SINI.
-    Satu-satunya tambahan adalah `created_by_user_id` (nullable), jadi baris
-    data lama yang sudah ada di database tetap valid tanpa perlu diubah.
+    Semua kolom tambahan bersifat nullable, jadi baris data lama yang sudah
+    ada di database tetap valid tanpa perlu diubah.
     """
     __tablename__ = "service_tickets"
     id = Column(Integer, primary_key=True, index=True)
@@ -31,20 +31,27 @@ class ServiceTicket(Base):
 
     # Data Pelanggan
     customer_name = Column(String(100), nullable=False)
-    customer_phone = Column(String(30), nullable=False)
-    customer_phone_2 = Column(String(30), nullable=True)
+    instansi_name = Column(String(150), nullable=True)  # BARU: Nama Instansi
+    customer_phone = Column(String(30), nullable=False)  # No. HP/WA 1
+    customer_phone_2 = Column(String(30), nullable=True)  # No. HP/WA 2
     customer_address = Column(Text, nullable=True)
     province = Column(String(50), nullable=True)
     city = Column(String(50), nullable=True)
     branch_or_point = Column(String(100), nullable=True)
+
+    # Tanggal proses servis
+    received_date = Column(DateTime, nullable=True)  # BARU: tanggal alat diterima
+    completed_date = Column(DateTime, nullable=True)  # BARU: tanggal alat selesai
+
     # Data Produk
     product_category = Column(String(50), nullable=True)
-    device_model = Column(String(50), nullable=False)
+    device_model = Column(String(100), nullable=False)
     serial_number = Column(String(50), nullable=True)
-    accessories = Column(String(100), nullable=True)
+    accessories = Column(String(150), nullable=True)
     warranty_status = Column(String(30), default="Out of Warranty")
     warranty_period = Column(String(20), nullable=True)
     product_origin = Column(String(50), nullable=True)
+
     # Data Servis
     complaint = Column(Text, nullable=True)
     technician_analysis = Column(Text, nullable=True)
@@ -52,7 +59,15 @@ class ServiceTicket(Base):
     leadtime_days = Column(Integer, default=1)
     notes = Column(Text, nullable=True)
     remarks = Column(String(100), nullable=True)
-    status = Column(String(50), default="Diproses")
+    status = Column(String(50), default="Diterima")
+
+    # BARU: Preferensi notifikasi (masing-masing independen: boleh keduanya,
+    # salah satu, atau tidak sama sekali)
+    notif_receipt_whatsapp = Column(Boolean, default=False, nullable=False)
+    notif_receipt_email = Column(Boolean, default=False, nullable=False)
+    notif_report_whatsapp = Column(Boolean, default=False, nullable=False)
+    notif_report_email = Column(Boolean, default=False, nullable=False)
+
     # Payment
     total_price = Column(Float, default=0.0)
     payment_code = Column(String(50), nullable=True)
@@ -60,6 +75,10 @@ class ServiceTicket(Base):
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    spareparts = relationship(
+        "TicketSparePart", back_populates="ticket", order_by="TicketSparePart.slot_no"
+    )
 
 
 class User(Base):
@@ -95,3 +114,45 @@ class LocationCounter(Base):
     id = Column(Integer, primary_key=True, index=True)
     service_type = Column(String(20), nullable=False, index=True)
     last_number = Column(Integer, nullable=False, default=0)
+
+
+class DeviceModelCatalog(Base):
+    """
+    Katalog Model Alat per Kategori Produk, dikelola oleh Super Admin lewat
+    menu "Kelola Model Alat". Ini membuat dropdown "Model Alat" di form input
+    tiket otomatis terisi sesuai Kategori Produk yang dipilih, dan bisa terus
+    ditambah tanpa perlu ubah kode/deploy ulang.
+    """
+    __tablename__ = "device_model_catalog"
+    __table_args__ = (
+        UniqueConstraint("category", "model_name", name="uq_device_model_catalog_category_model"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String(50), nullable=False, index=True)  # harus salah satu dari PRODUCT_CATEGORIES
+    model_name = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)  # nonaktifkan = soft, bukan delete
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TicketSparePart(Base):
+    """
+    Baris sparepart yang dipakai untuk satu tiket servis. Maksimal 3 slot per
+    tiket sesuai form (Sparepart 1/2/3), disimpan sebagai tabel terpisah
+    (bukan kolom pipih) supaya lebih rapi dan gampang dikembangkan nanti
+    (mis. kalau suatu saat butuh lebih dari 3 sparepart).
+    """
+    __tablename__ = "ticket_spareparts"
+    __table_args__ = (
+        UniqueConstraint("ticket_id", "slot_no", name="uq_ticket_spareparts_ticket_slot"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("service_tickets.id"), nullable=False)
+    slot_no = Column(Integer, nullable=False)  # 1, 2, atau 3
+    name = Column(String(150), nullable=True)
+    quantity = Column(Integer, nullable=True)
+    code = Column(String(50), nullable=True)
+    price = Column(Float, nullable=True)
+
+    ticket = relationship("ServiceTicket", back_populates="spareparts")
