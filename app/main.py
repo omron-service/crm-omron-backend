@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.v1 import mutations, services_api, auth as auth_api
+from app.api.v1 import mutations, services_api, auth as auth_api, inventory_parts
 from app.db.session import get_db, init_db
 from app.core.deps import get_current_user, require_department_access
 from app.models.schema import ServiceTicket, User
@@ -33,6 +33,7 @@ app.include_router(auth_api.admin_users_router)
 app.include_router(mutations.router)
 app.include_router(services_api.router)
 app.include_router(services_api.catalog_router)
+app.include_router(inventory_parts.router)
 
 
 @app.get("/")
@@ -299,8 +300,16 @@ def admin_dashboard_page():
                     </ul>
                 </li>
 
+                <li>
+                    <div class="menu-title" onclick="toggleSubmenu('sub-inventory')">4. Inventory Part <span>▼</span></div>
+                    <ul id="sub-inventory" class="submenu">
+                        <li><a href="#" data-loc="pusat" onclick="showTab('inventory-pusat')">a. Stok Sparepart di Pusat</a></li>
+                        <li><a href="#" data-loc="cabang" onclick="showTab('inventory-cabang')">b. Stok Sparepart di Cabang</a></li>
+                    </ul>
+                </li>
+
                 <li id="menu-setting">
-                    <div class="menu-title" onclick="toggleSubmenu('sub-setting')">4. Setting (Super Admin) <span>▼</span></div>
+                    <div class="menu-title" onclick="toggleSubmenu('sub-setting')">5. Setting (Super Admin) <span>▼</span></div>
                     <ul id="sub-setting" class="submenu">
                         <li><a href="#" onclick="showTab('setting-users')">a. Kelola User</a></li>
                         <li><a href="#" onclick="showTab('setting-devicemodels')">b. Kelola Model Alat</a></li>
@@ -418,7 +427,11 @@ def admin_dashboard_page():
                     </div>
                 </div>
 
-                <!-- 4. KELOLA USER (Super Admin) -->
+                <!-- 4. INVENTORY PART (dibangun dari 1 template JS, lihat buildInventoryTabsHTML) -->
+                <div id="tab-inventory-pusat" class="tab-content hidden"></div>
+                <div id="tab-inventory-cabang" class="tab-content hidden"></div>
+
+                <!-- 5. KELOLA USER (Super Admin) -->
                 <div id="tab-setting-users" class="tab-content hidden">
                     <div class="card">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -515,6 +528,7 @@ def admin_dashboard_page():
 
             window.onload = async function() {
                 buildServiceTabsHTML();
+                buildInventoryTabsHTML();
                 if (authToken) {
                     await enterDashboard();
                 } else {
@@ -837,6 +851,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (tabId.startsWith('service-')) hideFormInPage(tabId.replace('service-', ''));
                 if (tabId === 'setting-users') { renderUsers(); return; }
                 if (tabId === 'setting-devicemodels') { renderDeviceModels(); return; }
+                if (tabId.startsWith('inventory-')) { renderInventoryStock(tabId.replace('inventory-', '')); return; }
 
                 renderTableData(tabId);
                 updateDashboardStats();
@@ -1203,6 +1218,233 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                         throw new Error(data.detail || 'Gagal menonaktifkan model.');
                     }
                     renderDeviceModels();
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            // ---------- INVENTORY PART (Stok Sparepart Pusat & Cabang) ----------
+
+            const INVENTORY_LOCATION_LABELS = { pusat: 'Pusat', cabang: 'Cabang' };
+
+            const INVENTORY_ACTIONS = {
+                pusat: [
+                    { type: 'terima_gudang', label: 'Terima dari Gudang' },
+                    { type: 'kirim_ke_cabang', label: 'Kirim ke Cabang' },
+                    { type: 'terima_dari_cabang', label: 'Terima dari Cabang' },
+                    { type: 'terpakai_pusat', label: 'Terpakai di Pusat' },
+                ],
+                cabang: [
+                    { type: 'terima_dari_pusat', label: 'Terima dari Pusat' },
+                    { type: 'kirim_balik_ke_pusat', label: 'Kirim Balik ke Pusat' },
+                    { type: 'terpakai_cabang', label: 'Terpakai di Cabang' },
+                ],
+            };
+
+            const INVENTORY_REPORTS = {
+                pusat: [
+                    { kind: 'stock-list', label: 'Total List Sparepart Pusat' },
+                    { kind: 'movement', movement_type: 'kirim_ke_cabang', label: 'Total Kirim ke Cabang' },
+                    { kind: 'movement', movement_type: 'terpakai_pusat', label: 'Total Terpakai di Pusat' },
+                    { kind: 'opname', label: 'Hasil Stok Opname Pusat' },
+                ],
+                cabang: [
+                    { kind: 'stock-list', label: 'Total List Sparepart Cabang' },
+                    { kind: 'movement', movement_type: 'terpakai_cabang', label: 'Total Terpakai di Cabang' },
+                    { kind: 'opname', label: 'Hasil Stok Opname Cabang' },
+                ],
+            };
+
+            let currentMovementType = {};
+
+            function buildInventoryTabsHTML() {
+                Object.keys(INVENTORY_ACTIONS).forEach(loc => {
+                    const label = INVENTORY_LOCATION_LABELS[loc];
+                    const root = document.getElementById(`tab-inventory-${loc}`);
+                    const actionButtons = INVENTORY_ACTIONS[loc]
+                        .map(a => `<button class="btn btn-success" onclick="openMovementForm('${loc}','${a.type}','${a.label}')">+ ${a.label}</button>`)
+                        .join(' ');
+                    const reportOptions = INVENTORY_REPORTS[loc]
+                        .map((r, idx) => `<option value="${idx}">${r.label}</option>`)
+                        .join('');
+
+                    root.innerHTML = `
+                        <div class="card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                                <h2 style="margin:0; border:none;">Inventory Part - Stok Sparepart ${label}</h2>
+                                <div class="action-header" style="flex-wrap:wrap;">
+                                    <select onchange="if(this.value !== ''){ downloadInventoryReport('${loc}', parseInt(this.value)); this.selectedIndex = 0; }">
+                                        <option value="">📊 Download Laporan ▾</option>
+                                        ${reportOptions}
+                                    </select>
+                                    ${actionButtons}
+                                    <button class="btn btn-warning" onclick="toggleOpnameForm('${loc}')">+ Stok Opname</button>
+                                </div>
+                            </div>
+
+                            <div id="invMovementFormBox-${loc}" class="hidden" style="background:#f8f9fa; border:1px dashed #ccc; padding:10px; border-radius:6px; margin-bottom:15px;">
+                                <div style="font-weight:bold; color:#0056b3; margin-bottom:8px;" id="invMovementTitle-${loc}"></div>
+                                <div class="form-grid">
+                                    <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invCode-${loc}" placeholder="Kode/part number"></div>
+                                    <div class="form-group"><label>Nama Sparepart</label><input id="invName-${loc}" placeholder="Nama sparepart"></div>
+                                    <div class="form-group"><label>Jumlah <span class="required">*</span></label><input type="number" min="1" id="invQty-${loc}"></div>
+                                    <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invNote-${loc}" placeholder="Opsional"></div>
+                                </div>
+                                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                                    <button class="btn btn-secondary" onclick="closeMovementForm('${loc}')">Batal</button>
+                                    <button class="btn btn-success" onclick="submitMovement('${loc}')">Simpan</button>
+                                </div>
+                            </div>
+
+                            <div id="invOpnameFormBox-${loc}" class="hidden" style="background:#fff3cd; border:1px dashed #ffc107; padding:10px; border-radius:6px; margin-bottom:15px;">
+                                <div style="font-weight:bold; color:#856404; margin-bottom:8px;">Stok Opname (Hitung Fisik) - ${label}</div>
+                                <div class="form-grid">
+                                    <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invOpCode-${loc}" placeholder="Kode/part number"></div>
+                                    <div class="form-group"><label>Nama Sparepart</label><input id="invOpName-${loc}" placeholder="Nama sparepart"></div>
+                                    <div class="form-group"><label>Jumlah Hasil Hitung Fisik <span class="required">*</span></label><input type="number" min="0" id="invOpQty-${loc}"></div>
+                                    <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invOpNote-${loc}" placeholder="Opsional"></div>
+                                </div>
+                                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                                    <button class="btn btn-secondary" onclick="toggleOpnameForm('${loc}')">Batal</button>
+                                    <button class="btn btn-warning" onclick="submitOpname('${loc}')">Simpan Stok Opname</button>
+                                </div>
+                            </div>
+
+                            <table>
+                                <thead><tr><th>Kode</th><th>Nama Sparepart</th><th>Jumlah Stok</th><th>Harga Satuan</th><th>Update Terakhir</th></tr></thead>
+                                <tbody id="tableInventory-${loc}"></tbody>
+                            </table>
+                        </div>
+                    `;
+                });
+            }
+
+            function openMovementForm(loc, type, label) {
+                document.getElementById(`invOpnameFormBox-${loc}`).classList.add('hidden');
+                currentMovementType[loc] = type;
+                document.getElementById(`invMovementTitle-${loc}`).innerText = label;
+                setVal(`invCode-${loc}`, '');
+                setVal(`invName-${loc}`, '');
+                setVal(`invQty-${loc}`, '');
+                setVal(`invNote-${loc}`, '');
+                document.getElementById(`invMovementFormBox-${loc}`).classList.remove('hidden');
+            }
+
+            function closeMovementForm(loc) {
+                document.getElementById(`invMovementFormBox-${loc}`).classList.add('hidden');
+            }
+
+            function toggleOpnameForm(loc) {
+                document.getElementById(`invMovementFormBox-${loc}`).classList.add('hidden');
+                const box = document.getElementById(`invOpnameFormBox-${loc}`);
+                box.classList.toggle('hidden');
+                if (!box.classList.contains('hidden')) {
+                    setVal(`invOpCode-${loc}`, '');
+                    setVal(`invOpName-${loc}`, '');
+                    setVal(`invOpQty-${loc}`, '');
+                    setVal(`invOpNote-${loc}`, '');
+                }
+            }
+
+            async function submitMovement(loc) {
+                const code = valOf(`invCode-${loc}`);
+                const qty = valOf(`invQty-${loc}`);
+                if (!code || !qty) return alert('Kode Sparepart dan Jumlah wajib diisi.');
+
+                const payload = {
+                    location: loc,
+                    movement_type: currentMovementType[loc],
+                    code: code,
+                    name: valOf(`invName-${loc}`) || null,
+                    quantity: parseInt(qty),
+                    note: valOf(`invNote-${loc}`) || null,
+                };
+
+                try {
+                    const res = await authFetch('/api/v1/inventory-parts/movement', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan pergerakan stok.');
+                    alert(`Berhasil! Stok ${data.code} di ${loc.toUpperCase()} sekarang: ${data.new_quantity}`);
+                    closeMovementForm(loc);
+                    renderInventoryStock(loc);
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function submitOpname(loc) {
+                const code = valOf(`invOpCode-${loc}`);
+                const qty = valOf(`invOpQty-${loc}`);
+                if (!code || qty === '') return alert('Kode Sparepart dan Jumlah Hasil Hitung Fisik wajib diisi.');
+
+                const payload = {
+                    location: loc,
+                    code: code,
+                    name: valOf(`invOpName-${loc}`) || null,
+                    counted_quantity: parseInt(qty),
+                    note: valOf(`invOpNote-${loc}`) || null,
+                };
+
+                try {
+                    const res = await authFetch('/api/v1/inventory-parts/opname', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan stok opname.');
+                    alert(`Stok Opname tersimpan.\\nStok sistem sebelumnya: ${data.system_quantity}\\nHasil hitung fisik: ${data.counted_quantity}\\nSelisih: ${data.difference}`);
+                    toggleOpnameForm(loc);
+                    renderInventoryStock(loc);
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function renderInventoryStock(loc) {
+                try {
+                    const res = await authFetch(`/api/v1/inventory-parts/stock/${loc}`);
+                    const el = document.getElementById(`tableInventory-${loc}`);
+                    if (!res.ok || !el) return;
+                    const data = await res.json();
+                    el.innerHTML = data.length ? data.map(d => `
+                        <tr>
+                            <td><strong>${d.code}</strong></td>
+                            <td>${d.name || '-'}</td>
+                            <td>${d.quantity}</td>
+                            <td>Rp ${(d.unit_price || 0).toLocaleString('id-ID')}</td>
+                            <td>${d.updated_at ? d.updated_at.split('T')[0] : '-'}</td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada sparepart di lokasi ini</td></tr>`;
+                } catch(e) { console.error(e); }
+            }
+
+            async function downloadInventoryReport(loc, idx) {
+                const report = INVENTORY_REPORTS[loc][idx];
+                let url = '';
+                if (report.kind === 'stock-list') url = `/api/v1/inventory-parts/report/stock-list?location=${loc}`;
+                else if (report.kind === 'movement') url = `/api/v1/inventory-parts/report/movements?location=${loc}&movement_type=${report.movement_type}`;
+                else if (report.kind === 'opname') url = `/api/v1/inventory-parts/report/opname?location=${loc}`;
+
+                try {
+                    const res = await authFetch(url);
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Gagal mengunduh laporan.');
+                    }
+                    const blob = await res.blob();
+                    const dlUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = dlUrl;
+                    a.download = `${report.label.replace(/ /g, '_')}_${loc}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(dlUrl);
                 } catch(e) {
                     alert(e.message);
                 }
