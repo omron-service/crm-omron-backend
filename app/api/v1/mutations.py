@@ -1,3 +1,10 @@
+# TIDAK ADA PERUBAHAN LOGIKA DI FILE INI.
+# File ini sudah benar mengimpor `get_db` dari `app.db.session`, yang sekarang
+# menjadi satu-satunya sumber koneksi database di seluruh aplikasi (lihat
+# app/db/session.py). Sebelumnya services_api.py membuat engine SENDIRI secara
+# terpisah - kemungkinan besar itu penyebab dua "alam" database yang berbeda
+# antara modul tiket dan modul inventory. Sekarang keduanya konsisten satu sumber.
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -7,6 +14,7 @@ from app.schemas.inventory import StockMutationCreate
 
 router = APIRouter(prefix="/api/v1/inventory/mutations", tags=["Inventory Mutations"])
 
+
 @router.post("/request", status_code=status.HTTP_201_CREATED)
 def request_mutation(payload: StockMutationCreate, db: Session = Depends(get_db)):
     mutation = StockMutation(**payload.model_dump(), status=MutationStatus.REQUESTED)
@@ -15,30 +23,30 @@ def request_mutation(payload: StockMutationCreate, db: Session = Depends(get_db)
     db.refresh(mutation)
     return mutation
 
+
 @router.post("/{mutation_id}/approve")
 def approve_mutation(mutation_id: int, db: Session = Depends(get_db)):
     try:
         with db.begin():
             mutation = db.query(StockMutation).filter(
-                StockMutation.id == mutation_id, 
+                StockMutation.id == mutation_id,
                 StockMutation.status == MutationStatus.REQUESTED
             ).with_for_update().first()
-            
+
             if not mutation:
                 raise HTTPException(status_code=400, detail="Mutasi tidak valid atau sudah diproses.")
-            
+
             sender_stk = db.query(StockInventory).filter(
-                StockInventory.location_id == mutation.sender_location_id, 
+                StockInventory.location_id == mutation.sender_location_id,
                 StockInventory.spare_part_id == mutation.spare_part_id
             ).with_for_update().first()
-            
+
             if not sender_stk or sender_stk.quantity < mutation.quantity:
                 raise HTTPException(status_code=400, detail="Stok pengirim tidak mencukupi.")
-
             sender_stk.quantity -= mutation.quantity
             mutation.status = MutationStatus.IN_TRANSIT
             db.flush()
-            
+
         return {"message": "Mutasi disetujui & stok berhasil dipotong"}
     except Exception as e:
         db.rollback()
