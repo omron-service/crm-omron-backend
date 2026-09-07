@@ -12,6 +12,7 @@ from typing import Iterable, Optional
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.utils.cell import range_boundaries
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "assets")
 LOGO_PATH = os.path.join(ASSETS_DIR, "omron_logo.png")
@@ -59,23 +60,32 @@ def _fmt_date(value) -> str:
     return str(value)
 
 
-def _label(ws, coord: str, text: str):
-    cell = ws[coord]
-    cell.value = text
-    cell.font = FONT_LABEL
-    cell.fill = HEADER_FILL
-    cell.border = BOX
-    cell.alignment = ALIGN_LEFT
-    return cell
+def _block(ws, rng: str, value=None, font=FONT_LABEL, fill=None, align=ALIGN_LEFT, border=BOX):
+    """
+    Mengisi & memformat satu "blok" sel - baik itu sel tunggal (mis. "B6") atau
+    range gabungan (mis. "E7:F8") - dan yang PALING PENTING: menerapkan border
+    ke SEMUA sel di dalam range tersebut, bukan cuma sel pojok kiri-atas.
 
+    Ini memperbaiki masalah "border tidak rapi": kalau border cuma diset di
+    satu sel pada range yang di-merge, Excel menampilkan kotak yang terlihat
+    "putus" di sisi kanan/bawahnya karena sel-sel lain di dalam range itu
+    tidak punya border sama sekali.
+    """
+    if ":" in rng:
+        ws.merge_cells(rng)
+    min_col, min_row, max_col, max_row = range_boundaries(rng)
 
-def _value(ws, coord: str, value, align: Alignment = ALIGN_CENTER):
-    cell = ws[coord]
-    cell.value = value
-    cell.font = FONT_LABEL
-    cell.border = BOX
-    cell.alignment = align
-    return cell
+    if value is not None:
+        ws.cell(row=min_row, column=min_col).value = value
+
+    for row in range(min_row, max_row + 1):
+        for col in range(min_col, max_col + 1):
+            cell = ws.cell(row=row, column=col)
+            cell.border = border
+            cell.font = font
+            cell.alignment = align
+            if fill:
+                cell.fill = fill
 
 
 def generate_ticket_service_report(ticket, spareparts: Optional[Iterable] = None) -> io.BytesIO:
@@ -96,6 +106,15 @@ def generate_ticket_service_report(ticket, spareparts: Optional[Iterable] = None
     for row, h in ROW_HEIGHTS.items():
         ws.row_dimensions[row].height = h
 
+    # ---- Pengaturan halaman cetak: paksa semua kolom (A-G) muat dalam 1
+    # halaman lebar, supaya tidak ada kolom yang terpotong saat dibuka/dicetak
+    # (mis. logo, kolom Harga, No. Serial yang sebelumnya kepotong di tepi).
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0  # 0 = tinggi menyesuaikan, tidak dipaksa 1 halaman
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_area = "A1:G40"
+
     # ---- Judul + logo ----
     ws.merge_cells("B2:D3")
     title_cell = ws["B2"]
@@ -104,87 +123,78 @@ def generate_ticket_service_report(ticket, spareparts: Optional[Iterable] = None
     title_cell.alignment = ALIGN_LEFT
 
     if os.path.exists(LOGO_PATH):
-        logo_img = XLImage(LOGO_PATH)
-        logo_img.width = 190
-        logo_img.height = 50
-        ws.add_image(logo_img, "E2")
+        # Dibungkus try/except: penyisipan gambar butuh library Pillow. Kalau
+        # suatu saat Pillow belum/tidak ter-install di server, laporan TETAP
+        # berhasil dibuat (tanpa logo) daripada gagal total (500 error).
+        try:
+            logo_img = XLImage(LOGO_PATH)
+            logo_img.width = 190
+            logo_img.height = 50
+            ws.add_image(logo_img, "E2")
+        except ImportError:
+            pass
 
     # ---- Data tiket & pelanggan ----
-    _label(ws, "B6", "NO - ERF Number")
-    _value(ws, "C6", ticket.ticket_number)
-    _label(ws, "D6", "KONTRAK ID")
-    ws.merge_cells("E6:F6")
-    _value(ws, "E6", "")
+    # Setiap baris berikut: LABEL (kotak abu-abu, rata kiri) + VALUE (kotak
+    # putih). Border SELALU diterapkan ke seluruh range (lihat _block), jadi
+    # baik sel tunggal maupun sel gabungan sama-sama rapi.
+    _block(ws, "B6", "NO - ERF Number", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C6", ticket.ticket_number, align=ALIGN_CENTER)
+    _block(ws, "D6", "KONTRAK ID", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "E6:F6", "", align=ALIGN_CENTER)
 
-    _label(ws, "B7", "STATUS GARANSI")
-    _value(ws, "C7", ticket.warranty_status or "-")
-    ws.merge_cells("D7:D8")
-    _label(ws, "D7", "NAMA PEMILIK")
-    ws.merge_cells("E7:F8")
-    _value(ws, "E7", ticket.customer_name or "-")
+    _block(ws, "B7", "STATUS GARANSI", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C7", ticket.warranty_status or "-", align=ALIGN_CENTER)
+    _block(ws, "D7:D8", "NAMA PEMILIK", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "E7:F8", ticket.customer_name or "-", align=ALIGN_CENTER)
 
-    _label(ws, "B8", "TANGGAL TERIMA")
-    _value(ws, "C8", _fmt_date(ticket.received_date or ticket.created_at))
+    _block(ws, "B8", "TANGGAL TERIMA", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C8", _fmt_date(ticket.received_date or ticket.created_at), align=ALIGN_CENTER)
 
-    _label(ws, "B9", "TANGGAL SELESAI")
-    _value(ws, "C9", _fmt_date(ticket.completed_date))
-    _label(ws, "D9", "NO. TELEPON")
-    ws.merge_cells("E9:F9")
-    _value(ws, "E9", ticket.customer_phone or "-")
+    _block(ws, "B9", "TANGGAL SELESAI", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C9", _fmt_date(ticket.completed_date), align=ALIGN_CENTER)
+    _block(ws, "D9", "NO. TELEPON", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "E9:F9", ticket.customer_phone or "-", align=ALIGN_CENTER)
 
-    _label(ws, "B10", "ALAMAT")
-    ws.merge_cells("C10:F10")
-    _value(ws, "C10", ticket.customer_address or "-", ALIGN_LEFT)
+    _block(ws, "B10", "ALAMAT", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C10:F10", ticket.customer_address or "-", align=ALIGN_LEFT)
 
-    _label(ws, "B11", "PRODUK")
-    _value(ws, "C11", ticket.device_model or "-")
-    _label(ws, "D11", "NO. SERIAL")
-    ws.merge_cells("E11:F11")
-    _value(ws, "E11", ticket.serial_number or "-")
+    _block(ws, "B11", "PRODUK", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C11", ticket.device_model or "-", align=ALIGN_CENTER)
+    _block(ws, "D11", "NO. SERIAL", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "E11:F11", ticket.serial_number or "-", align=ALIGN_CENTER)
 
-    _label(ws, "B12", "AKSESORIS")
-    ws.merge_cells("C12:F12")
-    _value(ws, "C12", ticket.accessories or "-", ALIGN_LEFT)
+    _block(ws, "B12", "AKSESORIS", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C12:F12", ticket.accessories or "-", align=ALIGN_LEFT)
 
-    _label(ws, "B13", "PROBLEM")
-    ws.merge_cells("C13:F13")
-    _value(ws, "C13", ticket.complaint or "-", ALIGN_LEFT_WRAP)
+    _block(ws, "B13", "PROBLEM", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C13:F13", ticket.complaint or "-", align=ALIGN_LEFT_WRAP)
 
-    _label(ws, "B14", "KESIMPULAN")
-    ws.merge_cells("C14:F14")
-    _value(ws, "C14", ticket.technician_analysis or "-", ALIGN_LEFT_WRAP)
+    _block(ws, "B14", "KESIMPULAN", fill=HEADER_FILL, align=ALIGN_LEFT)
+    _block(ws, "C14:F14", ticket.technician_analysis or "-", align=ALIGN_LEFT_WRAP)
 
     # ---- Tabel sparepart (maks 5 baris, sesuai template asli) ----
-    ws.merge_cells("E16:F16")
-    for coord, text in [("B16", "Nama Spare Part"), ("C16", "Kode Spare Part"),
-                        ("D16", "Jumlah"), ("E16", "Harga. Rp.")]:
-        cell = ws[coord]
-        cell.value = text
-        cell.font = FONT_LABEL_BOLD
-        cell.fill = HEADER_FILL
-        cell.border = BOX
-        cell.alignment = ALIGN_CENTER
+    _block(ws, "B16", "Nama Spare Part", font=FONT_LABEL_BOLD, fill=HEADER_FILL, align=ALIGN_CENTER)
+    _block(ws, "C16", "Kode Spare Part", font=FONT_LABEL_BOLD, fill=HEADER_FILL, align=ALIGN_CENTER)
+    _block(ws, "D16", "Jumlah", font=FONT_LABEL_BOLD, fill=HEADER_FILL, align=ALIGN_CENTER)
+    _block(ws, "E16:F16", "Harga. Rp.", font=FONT_LABEL_BOLD, fill=HEADER_FILL, align=ALIGN_CENTER)
 
     sp_list = list(spareparts or [])[:5]
     total = 0.0
     for i in range(5):
         row = 17 + i
         sp = sp_list[i] if i < len(sp_list) else None
-        ws.merge_cells(f"E{row}:F{row}")
-        _value(ws, f"B{row}", sp.name if sp and sp.name else "", ALIGN_LEFT)
-        _value(ws, f"C{row}", sp.code if sp and sp.code else "", ALIGN_CENTER)
-        _value(ws, f"D{row}", sp.quantity if sp and sp.quantity else "", ALIGN_CENTER)
+        _block(ws, f"B{row}", sp.name if sp and sp.name else "", align=ALIGN_LEFT)
+        _block(ws, f"C{row}", sp.code if sp and sp.code else "", align=ALIGN_CENTER)
+        _block(ws, f"D{row}", sp.quantity if sp and sp.quantity else "", align=ALIGN_CENTER)
         line_total = (sp.price or 0) * (sp.quantity or 0) if sp else 0
-        _value(ws, f"E{row}", line_total if sp else "", ALIGN_RIGHT)
+        _block(ws, f"E{row}:F{row}", line_total if sp else "", align=ALIGN_RIGHT)
         total += line_total
 
-    ws["D22"].value = "Total"
-    ws["D22"].font = FONT_LABEL
-    ws["D22"].alignment = ALIGN_RIGHT
-    ws.merge_cells("E22:F22")
-    _value(ws, "E22", total, ALIGN_RIGHT)
+    _block(ws, "D22", "Total", border=Border(), align=ALIGN_RIGHT)
+    _block(ws, "E22:F22", total, align=ALIGN_RIGHT)
 
-    # ---- Syarat & Ketentuan ----
+    # ---- Syarat & Ketentuan (tanpa border, sesuai template asli) ----
     ws["B25"].value = "Syarat & Ketentuan"
     ws["B25"].font = FONT_LABEL_BOLD
 
@@ -205,10 +215,13 @@ def generate_ticket_service_report(ticket, spareparts: Optional[Iterable] = None
     ws["D35"].alignment = ALIGN_CENTER
 
     if os.path.exists(BANNER_PATH):
-        banner_img = XLImage(BANNER_PATH)
-        banner_img.width = 209
-        banner_img.height = 74
-        ws.add_image(banner_img, "D39")
+        try:
+            banner_img = XLImage(BANNER_PATH)
+            banner_img.width = 209
+            banner_img.height = 74
+            ws.add_image(banner_img, "D39")
+        except ImportError:
+            pass
 
     ws["B40"].value = "ALL for Healthcare"
     ws["B40"].font = FONT_FOOTER
