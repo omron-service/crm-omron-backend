@@ -9,7 +9,10 @@ from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.core.deps import get_current_user, require_department_access, require_role
-from app.models.schema import ServiceTicket, LocationCounter, User, DeviceModelCatalog, TicketSparePart
+from app.models.schema import (
+    ServiceTicket, LocationCounter, User, DeviceModelCatalog, TicketSparePart,
+    PartCatalog, PartStock, PartStockMovement,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -122,6 +125,58 @@ def _next_ticket_number(db: Session, srv_type: str) -> str:
     year_suffix = datetime.utcnow().strftime("%y")
     prefix_full = f"{PREFIX_BY_LOCATION[srv_type]}-{year_suffix}"
     return f"{prefix_full}{counter.last_number:05d}"
+
+
+def _deduct_pusat_stock_for_pickup(
+    db: Session, code: str, name: Optional[str], quantity: int, ticket_number: str, user_id: Optional[int]
+):
+    """
+    ATURAN BISNIS: Pickup Center adalah drop-off point untuk tim Pusat (bukan
+    lokasi inventory tersendiri). Jadi setiap sparepart yang dipakai untuk
+    tiket service_type='pickup' memotong stok PUSAT, dicatat sebagai
+    movement_type='terpakai_pusat' di riwayat pergerakan stok Pusat - supaya
+    ikut terhitung otomatis di laporan "Total Terpakai di Pusat".
+
+    Sengaja TIDAK memblokir pembuatan tiket kalau stok Pusat tidak mencukupi -
+    servis ke pelanggan tetap harus tercatat; kalau stok jadi minus, itu jadi
+    sinyal untuk restock, dicatat jelas di kolom catatan movement-nya.
+    """
+    code = code.strip()
+    if not code:
+        return
+
+    part = db.query(PartCatalog).filter(PartCatalog.code == code).first()
+    if part is None:
+        part = PartCatalog(code=code, name=name)
+        db.add(part)
+        db.flush()
+    elif name and part.name != name:
+        part.name = name
+
+    stock = (
+        db.query(PartStock)
+        .filter(PartStock.part_id == part.id, PartStock.location == "pusat")
+        .with_for_update()
+        .first()
+    )
+    if stock is None:
+        stock = PartStock(part_id=part.id, location="pusat", quantity=0)
+        db.add(stock)
+        db.flush()
+
+    note = f"Otomatis: dipakai untuk tiket Pickup Center {ticket_number}"
+    if stock.quantity < quantity:
+        note += f" (PERINGATAN: stok Pusat cuma {stock.quantity}, kurang {quantity - stock.quantity})"
+
+    stock.quantity -= quantity
+    db.add(PartStockMovement(
+        part_id=part.id,
+        location="pusat",
+        movement_type="terpakai_pusat",
+        quantity=quantity,
+        note=note,
+        performed_by_user_id=user_id,
+    ))
 
 
 @router.get("/all-tickets")
@@ -238,6 +293,13 @@ def create_ticket(
                     price=sp.price,
                 ))
 
+                # Pickup Center = drop-off point utk tim Pusat, jadi sparepart yang
+                # dipakai di tiket pickup memotong stok PUSAT (bukan stok tersendiri).
+                if srv_type == "pickup" and sp.code and sp.quantity:
+                    _deduct_pusat_stock_for_pickup(
+                        db, sp.code, sp.name, sp.quantity, ticket_num, current_user.id
+                    )
+
         db.commit()
         db.refresh(db_ticket)
         return db_ticket
@@ -277,7 +339,20 @@ def list_device_models(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Dipakai frontend untuk mengisi dropdown Model Alat begitu Kategori Produk dipilih."""
+    """Dipakai frontend /admin untuk mengisi dropdown Model Alat begitu Kategori Produk dipilih."""
+    query = db.query(DeviceModelCatalog).filter(DeviceModelCatalog.is_active.is_(True))
+    if category:
+        query = query.filter(DeviceModelCatalog.category == category)
+    return query.order_by(DeviceModelCatalog.category, DeviceModelCatalog.model_name).all()
+
+
+@catalog_router.get("/public")
+def list_device_models_public(category: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    Versi PUBLIK (tanpa login) dari endpoint di atas - dipakai khusus oleh form
+    drop-off Pickup Center di /pickup-intake, karena form itu memang tidak
+    mewajibkan login (diisi tim lapangan/kurir tanpa akun sistem).
+    """
     query = db.query(DeviceModelCatalog).filter(DeviceModelCatalog.is_active.is_(True))
     if category:
         query = query.filter(DeviceModelCatalog.category == category)
