@@ -156,3 +156,76 @@ class TicketSparePart(Base):
     price = Column(Float, nullable=True)
 
     ticket = relationship("ServiceTicket", back_populates="spareparts")
+
+
+# ==================== INVENTORY PART (Stok Sparepart Pusat & Cabang) ====================
+# Nama class sengaja PartCatalog/PartStock/dst (bukan SparePart/StockInventory) supaya
+# TIDAK bentrok dengan class lama di app/models/inventory.py yang sudah ada sebelumnya
+# (SparePart, StockInventory, StockMutation) - keduanya sekarang hidup berdampingan,
+# tidak saling menghapus/mengganggu.
+
+class PartCatalog(Base):
+    """Katalog induk sparepart (kode + nama), dibuat otomatis begitu kode sparepart
+    pertama kali dipakai di salah satu form pergerakan stok."""
+    __tablename__ = "part_catalog"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), unique=True, index=True, nullable=False)
+    name = Column(String(150), nullable=True)
+    unit_price = Column(Float, nullable=True, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PartStock(Base):
+    """Jumlah stok TERKINI per sparepart per lokasi ("pusat" atau "cabang")."""
+    __tablename__ = "part_stock"
+    __table_args__ = (UniqueConstraint("part_id", "location", name="uq_part_stock_part_location"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    part_id = Column(Integer, ForeignKey("part_catalog.id"), nullable=False)
+    location = Column(String(20), nullable=False, index=True)  # "pusat" atau "cabang"
+    quantity = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    part = relationship("PartCatalog")
+
+
+class PartStockMovement(Base):
+    """
+    Riwayat SETIAP pergerakan stok (item masuk/keluar), sumber data untuk laporan
+    Excel "Total Kirim ke Cabang", "Total Terpakai", dll. TIDAK PERNAH dihapus -
+    ini adalah jejak audit permanen.
+    movement_type yang valid: terima_gudang, kirim_ke_cabang, terima_dari_cabang,
+    terpakai_pusat, terima_dari_pusat, kirim_balik_ke_pusat, terpakai_cabang.
+    """
+    __tablename__ = "part_stock_movements"
+    id = Column(Integer, primary_key=True, index=True)
+    part_id = Column(Integer, ForeignKey("part_catalog.id"), nullable=False)
+    location = Column(String(20), nullable=False, index=True)
+    movement_type = Column(String(30), nullable=False, index=True)
+    quantity = Column(Integer, nullable=False)
+    note = Column(String(255), nullable=True)
+    performed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    part = relationship("PartCatalog")
+    performed_by = relationship("User")
+
+
+class PartStockOpname(Base):
+    """Hasil stok opname (hitung fisik) per sparepart per lokasi. Menyimpan jumlah
+    sistem SEBELUM opname, jumlah hasil hitung fisik, dan selisihnya - untuk audit,
+    tidak pernah ditimpa/dihapus."""
+    __tablename__ = "part_stock_opname"
+    id = Column(Integer, primary_key=True, index=True)
+    part_id = Column(Integer, ForeignKey("part_catalog.id"), nullable=False)
+    location = Column(String(20), nullable=False, index=True)
+    system_quantity = Column(Integer, nullable=False)
+    counted_quantity = Column(Integer, nullable=False)
+    difference = Column(Integer, nullable=False)
+    note = Column(String(255), nullable=True)
+    performed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    part = relationship("PartCatalog")
+    performed_by = relationship("User")

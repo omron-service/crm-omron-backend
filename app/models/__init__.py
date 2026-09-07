@@ -7,7 +7,10 @@ from app.models.inventory import SparePart, StockInventory, StockMutation
 # seluruh sistem auth & ticketing yang sudah berjalan) ada di schema.py -
 # WAJIB diimpor di sini juga supaya Alembic/create_all melihat semuanya
 # dalam satu metadata yang sama, tanpa duplikat nama tabel.
-from app.models.schema import ServiceTicket, User, LocationCounter, DeviceModelCatalog, TicketSparePart
+from app.models.schema import (
+    ServiceTicket, User, LocationCounter, DeviceModelCatalog, TicketSparePart,
+    PartCatalog, PartStock, PartStockMovement, PartStockOpname,
+)
 
 __all__ = [
     "Base",
@@ -22,4 +25,8 @@ __all__ = [
     "LocationCounter",
     "DeviceModelCatalog",
     "TicketSparePart",
+    "PartCatalog",
+    "PartStock",
+    "PartStockMovement",
+    "PartStockOpname",
 ]
