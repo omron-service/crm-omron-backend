@@ -9,7 +9,7 @@ from app.models.enums import LocationType, UserRole, TicketStatus, PaymentStatus
 from app.models.user_location import Location
 from app.models.service import DeviceCategory, DeviceModel
 from app.models.inventory import SparePart, StockInventory, StockMutation
-from app.models.schema import ServiceTicket, User, LocationCounter
+from app.models.schema import ServiceTicket, User, LocationCounter, DeviceModelCatalog, TicketSparePart
 
 __all__ = [
     "Base",
@@ -22,4 +22,6 @@ __all__ = [
     "StockInventory",
     "StockMutation",
     "LocationCounter",
+    "DeviceModelCatalog",
+    "TicketSparePart",
 ]
