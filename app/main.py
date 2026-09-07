@@ -32,6 +32,7 @@ app.include_router(auth_api.router)
 app.include_router(auth_api.admin_users_router)
 app.include_router(mutations.router)
 app.include_router(services_api.router)
+app.include_router(services_api.catalog_router)
 
 
 @app.get("/")
@@ -302,6 +303,7 @@ def admin_dashboard_page():
                     <div class="menu-title" onclick="toggleSubmenu('sub-setting')">4. Setting (Super Admin) <span>▼</span></div>
                     <ul id="sub-setting" class="submenu">
                         <li><a href="#" onclick="showTab('setting-users')">a. Kelola User</a></li>
+                        <li><a href="#" onclick="showTab('setting-devicemodels')">b. Kelola Model Alat</a></li>
                     </ul>
                 </li>
             </ul>
@@ -455,6 +457,48 @@ def admin_dashboard_page():
                     </div>
                 </div>
 
+                <!-- 4b. KELOLA MODEL ALAT (Super Admin) -->
+                <div id="tab-setting-devicemodels" class="tab-content hidden">
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h2 style="border:none; margin:0;">Kelola Model Alat per Kategori</h2>
+                            <button class="btn btn-success" onclick="toggleDeviceModelForm()">+ Tambah Model</button>
+                        </div>
+                        <p style="font-size:12px; color:#666;">Model yang ditambahkan di sini akan otomatis muncul di dropdown "Model Alat" pada form input tiket, sesuai Kategori Produk yang dipilih.</p>
+
+                        <div id="deviceModelFormBox" class="hidden" style="margin-top:12px; border:1px dashed #ccc; padding:10px; border-radius:6px;">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Kategori Produk</label>
+                                    <select id="dmCategory">
+                                        <option value="Arm BPM">Arm BPM</option>
+                                        <option value="Wrist BPM">Wrist BPM</option>
+                                        <option value="BGM">BGM</option>
+                                        <option value="BCM">BCM</option>
+                                        <option value="DWS">DWS</option>
+                                        <option value="NEB-Comp">NEB-Comp</option>
+                                        <option value="NEB-Mesh">NEB-Mesh</option>
+                                        <option value="NEB-Ultra">NEB-Ultra</option>
+                                        <option value="Forehead Thermo">Forehead Thermo</option>
+                                        <option value="Ear Thermo">Ear Thermo</option>
+                                        <option value="Pen Thermo">Pen Thermo</option>
+                                        <option value="MEDICAL">MEDICAL</option>
+                                        <option value="TENS">TENS</option>
+                                        <option value="Others">Others</option>
+                                    </select>
+                                </div>
+                                <div class="form-group"><label>Nama Model</label><input id="dmModelName" placeholder="Contoh: HEM-7120"></div>
+                            </div>
+                            <button class="btn btn-success" onclick="createDeviceModel()">Simpan Model</button>
+                        </div>
+
+                        <table style="margin-top:15px;">
+                            <thead><tr><th>Kategori</th><th>Nama Model</th><th>Aksi</th></tr></thead>
+                            <tbody id="tableDeviceModels"></tbody>
+                        </table>
+                    </div>
+                </div>
+
             </div>
         </main>
 
@@ -595,56 +639,193 @@ def admin_dashboard_page():
                 document.getElementById(id).classList.toggle('open');
             }
 
+            // ---------- DATA REFERENSI (statis, tidak perlu API) ----------
+
+            const PRODUCT_CATEGORIES = ["Arm BPM","Wrist BPM","BGM","BCM","DWS","NEB-Comp","NEB-Mesh","NEB-Ultra","Forehead Thermo","Ear Thermo","Pen Thermo","MEDICAL","TENS","Others"];
+            const PRODUCT_ORIGINS = ["LEU","EU-DRC","AMS","IDC","APT/TKO","CV/PT/RS","ALPRO"];
+            const WARRANTY_STATUS_OPTIONS = ["Under Warranty","Out of Warranty"];
+            const WARRANTY_PERIOD_OPTIONS = ["1","2","3","4","5","6"];
+            const REMARKS_OPTIONS = ["Compliance Check/Sensor Check","Repair","Replace Product/Claim","Unrepairable/Return to Customer","Disagree with Service Fee","No Response"];
+            const REPAIR_STATUS_OPTIONS = ["Diterima","Diproses","Selesai/Dikirim","Selesai Diambil","Menunggu Sparepart"];
+const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sabang", "Meulaboh", "Aceh Besar", "Aceh Utara", "Aceh Tengah"], "Sumatera Utara": ["Medan", "Binjai", "Pematangsiantar", "Tebing Tinggi", "Sibolga", "Tanjungbalai", "Padang Sidempuan", "Deli Serdang", "Karo"], "Sumatera Barat": ["Padang", "Bukittinggi", "Padang Panjang", "Payakumbuh", "Sawahlunto", "Solok", "Pariaman", "Agam"], "Riau": ["Pekanbaru", "Dumai", "Kampar", "Bengkalis", "Indragiri Hulu", "Indragiri Hilir", "Rokan Hulu", "Rokan Hilir"], "Kepulauan Riau": ["Batam", "Tanjungpinang", "Bintan", "Karimun", "Natuna", "Lingga"], "Jambi": ["Jambi", "Sungai Penuh", "Batanghari", "Bungo", "Kerinci", "Merangin", "Muaro Jambi"], "Sumatera Selatan": ["Palembang", "Lubuklinggau", "Pagar Alam", "Prabumulih", "Ogan Komering Ilir", "Ogan Komering Ulu", "Musi Banyuasin", "Musi Rawas"], "Bangka Belitung": ["Pangkal Pinang", "Bangka", "Bangka Barat", "Bangka Tengah", "Bangka Selatan", "Belitung", "Belitung Timur"], "Bengkulu": ["Bengkulu", "Rejang Lebong", "Bengkulu Utara", "Bengkulu Selatan", "Kepahiang", "Kaur"], "Lampung": ["Bandar Lampung", "Metro", "Lampung Selatan", "Lampung Tengah", "Lampung Utara", "Lampung Timur", "Tulang Bawang", "Pesawaran"], "DKI Jakarta": ["Jakarta Pusat", "Jakarta Utara", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Kepulauan Seribu"], "Jawa Barat": ["Bandung", "Bekasi", "Bogor", "Depok", "Cimahi", "Sukabumi", "Tasikmalaya", "Cirebon", "Banjar", "Karawang", "Purwakarta", "Subang", "Garut", "Ciamis"], "Banten": ["Serang", "Tangerang", "Tangerang Selatan", "Cilegon", "Pandeglang", "Lebak"], "Jawa Tengah": ["Semarang", "Surakarta", "Salatiga", "Magelang", "Pekalongan", "Tegal", "Purwokerto", "Kudus", "Klaten", "Sukoharjo", "Boyolali", "Sragen", "Cilacap"], "DI Yogyakarta": ["Yogyakarta", "Sleman", "Bantul", "Kulon Progo", "Gunungkidul"], "Jawa Timur": ["Surabaya", "Malang", "Kediri", "Madiun", "Blitar", "Mojokerto", "Pasuruan", "Probolinggo", "Batu", "Sidoarjo", "Gresik", "Jember", "Banyuwangi", "Tuban"], "Bali": ["Denpasar", "Badung", "Gianyar", "Tabanan", "Buleleng", "Karangasem", "Klungkung", "Bangli", "Jembrana"], "Nusa Tenggara Barat": ["Mataram", "Bima", "Lombok Barat", "Lombok Tengah", "Lombok Timur", "Lombok Utara", "Sumbawa", "Dompu"], "Nusa Tenggara Timur": ["Kupang", "Ende", "Maumere", "Manggarai", "Manggarai Barat", "Sumba Timur", "Sumba Barat", "Timor Tengah Selatan"], "Kalimantan Barat": ["Pontianak", "Singkawang", "Sambas", "Kubu Raya", "Ketapang", "Sanggau", "Sintang"], "Kalimantan Tengah": ["Palangka Raya", "Kotawaringin Barat", "Kotawaringin Timur", "Kapuas", "Barito Utara", "Barito Selatan"], "Kalimantan Selatan": ["Banjarmasin", "Banjarbaru", "Banjar", "Barito Kuala", "Tanah Laut", "Hulu Sungai Utara", "Hulu Sungai Selatan"], "Kalimantan Timur": ["Samarinda", "Balikpapan", "Bontang", "Kutai Kartanegara", "Kutai Timur", "Kutai Barat", "Berau", "Paser"], "Kalimantan Utara": ["Tarakan", "Bulungan", "Malinau", "Nunukan", "Tana Tidung"], "Sulawesi Utara": ["Manado", "Bitung", "Tomohon", "Kotamobagu", "Minahasa", "Minahasa Utara", "Minahasa Selatan"], "Gorontalo": ["Gorontalo", "Boalemo", "Bone Bolango", "Gorontalo Utara", "Pohuwato"], "Sulawesi Tengah": ["Palu", "Poso", "Banggai", "Donggala", "Toli-Toli", "Parigi Moutong", "Morowali"], "Sulawesi Barat": ["Mamuju", "Majene", "Polewali Mandar", "Mamasa", "Pasangkayu"], "Sulawesi Selatan": ["Makassar", "Parepare", "Palopo", "Gowa", "Maros", "Bone", "Bulukumba", "Pinrang", "Wajo", "Sidenreng Rappang"], "Sulawesi Tenggara": ["Kendari", "Baubau", "Kolaka", "Konawe", "Muna", "Bombana", "Wakatobi"], "Maluku": ["Ambon", "Tual", "Maluku Tengah", "Maluku Tenggara", "Buru", "Seram Bagian Barat"], "Maluku Utara": ["Ternate", "Tidore Kepulauan", "Halmahera Barat", "Halmahera Utara", "Halmahera Tengah", "Halmahera Selatan"], "Papua": ["Jayapura", "Keerom", "Sarmi", "Biak Numfor", "Jayawijaya", "Nabire", "Mimika", "Merauke"], "Papua Barat": ["Manokwari", "Sorong", "Fakfak", "Kaimana", "Teluk Bintuni", "Teluk Wondama", "Raja Ampat"], "Papua Barat Daya": ["Sorong", "Sorong Selatan", "Tambrauw", "Maybrat", "Raja Ampat"], "Papua Tengah": ["Nabire", "Paniai", "Mimika", "Puncak", "Puncak Jaya", "Dogiyai", "Deiyai"], "Papua Pegunungan": ["Jayawijaya", "Pegunungan Bintang", "Yahukimo", "Tolikara", "Yalimo", "Lanny Jaya", "Nduga"], "Papua Selatan": ["Merauke", "Boven Digoel", "Mappi", "Asmat"]};
+
+            function opts(list, selected) {
+                return list.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('');
+            }
+
             // ---------- BANGUN TAB DATA SERVICE DARI 1 TEMPLATE (fix bug duplikat id form) ----------
 
             function buildServiceTabsHTML() {
                 LOCATIONS.forEach(loc => {
-                    const root = document.getElementById(`tab-service-${loc.key}`);
+                    const k = loc.key;
+                    const root = document.getElementById(`tab-service-${k}`);
                     root.innerHTML = `
-                        <div id="view-table-service-${loc.key}" class="card">
+                        <div id="view-table-service-${k}" class="card">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                                 <h2 style="margin:0; border:none;">Data Service - ${loc.label}</h2>
                                 <div class="action-header">
-                                    <input type="text" id="search-service-${loc.key}" class="search-input" placeholder="Cari tiket / nama / SN...">
-                                    <button class="btn btn-secondary" onclick="downloadExcel('${loc.key}')">📊 Download Excel</button>
-                                    <button class="btn btn-success" onclick="showFormInPage('${loc.key}')">+ Input Tiket ${loc.label.toUpperCase()}</button>
+                                    <input type="text" id="search-service-${k}" class="search-input" placeholder="Cari tiket / nama / SN...">
+                                    <button class="btn btn-secondary" onclick="downloadExcel('${k}')">📊 Download Excel</button>
+                                    <button class="btn btn-success" onclick="showFormInPage('${k}')">+ Input Tiket ${loc.label.toUpperCase()}</button>
                                 </div>
                             </div>
                             <table>
                                 <thead>
-                                    <tr><th>No. Tiket</th><th>Pemilik</th><th>No. HP/WA</th><th>Model Alat</th><th>Serial No.</th><th>Garansi</th><th>Keluhan</th><th>Status</th><th>Tgl Diterima</th></tr>
+                                    <tr><th>No. Tiket</th><th>Pemilik</th><th>Instansi</th><th>No. HP/WA</th><th>Model Alat</th><th>Serial No.</th><th>Garansi</th><th>Keluhan</th><th>Status</th><th>Tgl Diterima</th></tr>
                                 </thead>
-                                <tbody id="tableService-${loc.key}"></tbody>
+                                <tbody id="tableService-${k}"></tbody>
                             </table>
                         </div>
 
-                        <div id="view-form-service-${loc.key}" class="card hidden">
+                        <div id="view-form-service-${k}" class="card hidden">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:2px solid #0056b3; padding-bottom:10px;">
                                 <h2 style="margin:0; border:none;">Form Input Tiket Servis - ${loc.label} (${loc.prefix})</h2>
-                                <button class="btn btn-secondary" onclick="hideFormInPage('${loc.key}')">← Kembali ke Tabel</button>
+                                <button class="btn btn-secondary" onclick="hideFormInPage('${k}')">← Kembali ke Tabel</button>
                             </div>
                             <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
                                 ℹ️ Tiket ini akan terdaftar KHUSUS di data <strong>${loc.label}</strong> saja - tidak akan tampil atau tercatat di lokasi lain.
                             </div>
+
                             <div class="form-section-title">1. Data Pelanggan</div>
                             <div class="form-grid">
-                                <div class="form-group"><label>Nama Pemilik <span class="required">*</span></label><input id="inpName-${loc.key}" placeholder="Contoh: Budi Santoso"></div>
-                                <div class="form-group"><label>No. HP / WhatsApp <span class="required">*</span></label><input id="inpPhone-${loc.key}" placeholder="081234567890"></div>
+                                <div class="form-group"><label>Nama Customer <span class="required">*</span></label><input id="inpName-${k}" placeholder="Contoh: Budi Santoso"></div>
+                                <div class="form-group"><label>Nama Instansi</label><input id="inpInstansi-${k}" placeholder="Contoh: RS Harapan Bunda"></div>
+                                <div class="form-group"><label>No. HP / WhatsApp 1 <span class="required">*</span></label><input id="inpPhone1-${k}" placeholder="081234567890"></div>
+                                <div class="form-group"><label>No. HP / WhatsApp 2</label><input id="inpPhone2-${k}" placeholder="(opsional)"></div>
+                                <div class="form-group" style="grid-column: 1 / -1;"><label>Alamat</label><input id="inpAddress-${k}" placeholder="Alamat lengkap"></div>
+                                <div class="form-group">
+                                    <label>Provinsi</label>
+                                    <select id="inpProvince-${k}" onchange="onProvinceChange('${k}')">
+                                        <option value="">-- Pilih Provinsi --</option>
+                                        ${Object.keys(PROVINCE_CITY_DATA).map(p => `<option value="${p}">${p}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Kota</label>
+                                    <select id="inpCity-${k}"><option value="">-- Pilih Provinsi dulu --</option></select>
+                                </div>
+                                <div class="form-group"><label>Tanggal Alat Diterima</label><input type="date" id="inpReceivedDate-${k}"></div>
+                                <div class="form-group"><label>Tanggal Alat Selesai</label><input type="date" id="inpCompletedDate-${k}"></div>
                             </div>
+
                             <div class="form-section-title">2. Data Produk</div>
                             <div class="form-grid">
-                                <div class="form-group"><label>Model Alat</label><input id="inpModel-${loc.key}" value="HEM-7120"></div>
-                                <div class="form-group"><label>Serial No. Alat</label><input id="inpSN-${loc.key}" placeholder="SN2026xxxx"></div>
-                                <div class="form-group"><label>Keluhan</label><input id="inpKeluhan-${loc.key}" placeholder="Keluhan perangkat"></div>
+                                <div class="form-group">
+                                    <label>Produk Kategori</label>
+                                    <select id="inpCategory-${k}" onchange="onCategoryChange('${k}')">
+                                        <option value="">-- Pilih Kategori --</option>
+                                        ${opts(PRODUCT_CATEGORIES)}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Model Alat</label>
+                                    <select id="inpModel-${k}"><option value="">-- Pilih Kategori dulu --</option></select>
+                                </div>
+                                <div class="form-group"><label>Serial No. Alat</label><input id="inpSN-${k}" placeholder="SN2026xxxx"></div>
+                                <div class="form-group"><label>Aksesoris</label><input id="inpAccessories-${k}" placeholder="Contoh: Kabel, Adaptor"></div>
+                                <div class="form-group">
+                                    <label>Status Garansi</label>
+                                    <select id="inpWarrantyStatus-${k}">${opts(WARRANTY_STATUS_OPTIONS, 'Out of Warranty')}</select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Warranty Period (tahun)</label>
+                                    <select id="inpWarrantyPeriod-${k}">
+                                        <option value="">-- Pilih --</option>
+                                        ${opts(WARRANTY_PERIOD_OPTIONS)}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Asal Produk</label>
+                                    <select id="inpOrigin-${k}">
+                                        <option value="">-- Pilih --</option>
+                                        ${opts(PRODUCT_ORIGINS)}
+                                    </select>
+                                </div>
                             </div>
+
+                            <div class="form-section-title">3. Data Servis</div>
+                            <div class="form-grid">
+                                <div class="form-group" style="grid-column: 1 / -1;"><label>Keluhan Pelanggan</label><input id="inpKeluhan-${k}" placeholder="Keluhan perangkat"></div>
+                                <div class="form-group" style="grid-column: 1 / -1;"><label>Analisa Teknisi</label><input id="inpAnalysis-${k}" placeholder="Hasil analisa teknisi"></div>
+                                <div class="form-group"><label>Symptom (Kode)</label><input id="inpSymptom-${k}" placeholder="Contoh: PCB-01"></div>
+                                <div class="form-group"><label>Leadtime (hari)</label><input type="number" min="0" id="inpLeadtime-${k}" value="1"></div>
+                                <div class="form-group">
+                                    <label>Remarks</label>
+                                    <select id="inpRemarks-${k}">
+                                        <option value="">-- Pilih --</option>
+                                        ${opts(REMARKS_OPTIONS)}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Repair Status</label>
+                                    <select id="inpStatus-${k}">${opts(REPAIR_STATUS_OPTIONS, 'Diterima')}</select>
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;"><label>Catatan</label><input id="inpNotes-${k}" placeholder="Catatan tambahan"></div>
+                            </div>
+
+                            <div class="form-section-title">4. Sparepart (opsional, maksimal 3)</div>
+                            ${[1,2,3].map(n => `
+                            <div class="sparepart-box" style="background:#f8f9fa; border:1px dashed #ccc; padding:10px; border-radius:6px; margin-bottom:10px;">
+                                <div style="font-weight:bold; font-size:12px; color:#0056b3; margin-bottom:8px;">Sparepart ${n}</div>
+                                <div class="form-grid">
+                                    <div class="form-group"><label>Nama Sparepart</label><input id="inpSpName${n}-${k}" placeholder="Nama sparepart"></div>
+                                    <div class="form-group"><label>Jumlah</label><input type="number" min="0" id="inpSpQty${n}-${k}"></div>
+                                    <div class="form-group"><label>Kode Sparepart</label><input id="inpSpCode${n}-${k}" placeholder="Kode/part number"></div>
+                                    <div class="form-group"><label>Harga (Rp)</label><input type="number" min="0" id="inpSpPrice${n}-${k}"></div>
+                                </div>
+                            </div>
+                            `).join('')}
+
+                            <div class="form-section-title">5. Notifikasi</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Receipt Service</label>
+                                    <label style="font-weight:normal; display:inline-block; margin-right:15px;"><input type="checkbox" id="inpNotifReceiptWA-${k}" style="width:auto;"> via WhatsApp</label>
+                                    <label style="font-weight:normal; display:inline-block;"><input type="checkbox" id="inpNotifReceiptEmail-${k}" style="width:auto;"> via Email</label>
+                                </div>
+                                <div class="form-group">
+                                    <label>Service Report</label>
+                                    <label style="font-weight:normal; display:inline-block; margin-right:15px;"><input type="checkbox" id="inpNotifReportWA-${k}" style="width:auto;"> via WhatsApp</label>
+                                    <label style="font-weight:normal; display:inline-block;"><input type="checkbox" id="inpNotifReportEmail-${k}" style="width:auto;"> via Email</label>
+                                </div>
+                            </div>
+
                             <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
-                                <button class="btn btn-secondary" onclick="hideFormInPage('${loc.key}')">Batal</button>
-                                <button class="btn btn-success" onclick="savePageFormData('${loc.key}')">Simpan ke Data ${loc.label.toUpperCase()}</button>
+                                <button class="btn btn-secondary" onclick="hideFormInPage('${k}')">Batal</button>
+                                <button class="btn btn-success" onclick="savePageFormData('${k}')">Simpan ke Data ${loc.label.toUpperCase()}</button>
                             </div>
                         </div>
                     `;
-                    document.getElementById(`search-service-${loc.key}`).addEventListener('keyup', () => filterTable(loc.key));
+                    document.getElementById(`search-service-${k}`).addEventListener('keyup', () => filterTable(k));
                 });
+            }
+
+            function onProvinceChange(locKey) {
+                const province = document.getElementById(`inpProvince-${locKey}`).value;
+                const citySelect = document.getElementById(`inpCity-${locKey}`);
+                const cities = PROVINCE_CITY_DATA[province] || [];
+                citySelect.innerHTML = cities.length
+                    ? `<option value="">-- Pilih Kota --</option>` + opts(cities)
+                    : `<option value="">-- Pilih Provinsi dulu --</option>`;
+            }
+
+            async function onCategoryChange(locKey) {
+                const category = document.getElementById(`inpCategory-${locKey}`).value;
+                const modelSelect = document.getElementById(`inpModel-${locKey}`);
+                if (!category) {
+                    modelSelect.innerHTML = `<option value="">-- Pilih Kategori dulu --</option>`;
+                    return;
+                }
+                modelSelect.innerHTML = `<option value="">Memuat...</option>`;
+                try {
+                    const res = await authFetch(`/api/v1/device-models/?category=${encodeURIComponent(category)}`);
+                    const models = res.ok ? await res.json() : [];
+                    modelSelect.innerHTML = models.length
+                        ? `<option value="">-- Pilih Model --</option>` + models.map(m => `<option value="${m.model_name}">${m.model_name}</option>`).join('')
+                        : `<option value="">(Belum ada model utk kategori ini - tambah di Kelola Model Alat)</option>`;
+                } catch(e) {
+                    modelSelect.innerHTML = `<option value="">Gagal memuat model</option>`;
+                }
             }
 
             function showTab(tabId) {
@@ -655,6 +836,7 @@ def admin_dashboard_page():
 
                 if (tabId.startsWith('service-')) hideFormInPage(tabId.replace('service-', ''));
                 if (tabId === 'setting-users') { renderUsers(); return; }
+                if (tabId === 'setting-devicemodels') { renderDeviceModels(); return; }
 
                 renderTableData(tabId);
                 updateDashboardStats();
@@ -695,15 +877,16 @@ def admin_dashboard_page():
                     <tr>
                         <td><strong>${d.ticket_number}</strong></td>
                         <td>${d.customer_name}</td>
+                        <td>${d.instansi_name || '-'}</td>
                         <td>${d.customer_phone || '-'}</td>
                         <td>${d.device_model}</td>
                         <td>${d.serial_number || '-'}</td>
                         <td>${d.warranty_status || 'Out of Warranty'}</td>
                         <td>${d.complaint || '-'}</td>
-                        <td><span class="badge badge-lunas">${d.status || 'Diproses'}</span></td>
-                        <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
+                        <td><span class="badge badge-lunas">${d.status || 'Diterima'}</span></td>
+                        <td>${d.received_date ? d.received_date.split('T')[0] : (d.created_at ? d.created_at.split('T')[0] : '-')}</td>
                     </tr>
-                `).join('') : `<tr><td colspan="9" style="text-align:center;">Belum ada data di lokasi ini</td></tr>`;
+                `).join('') : `<tr><td colspan="10" style="text-align:center;">Belum ada data di lokasi ini</td></tr>`;
             }
 
             function populatePaymentRows(menu, data) {
@@ -742,22 +925,62 @@ def admin_dashboard_page():
                 if (tableView) tableView.classList.remove('hidden');
             }
 
+            function valOf(id) {
+                const el = document.getElementById(id);
+                return el ? el.value.trim() : '';
+            }
+
+            function toIsoOrNull(dateStr) {
+                return dateStr ? new Date(dateStr + 'T00:00:00').toISOString() : null;
+            }
+
             async function savePageFormData(locKey) {
                 // Setiap input punya id unik per-lokasi (mis. inpName-pusat, inpName-cabang),
                 // jadi TIDAK ADA LAGI risiko membaca data sisa dari form lokasi lain
                 // yang sebelumnya pernah dibuka (bug id duplikat pada versi lama).
-                const name = document.getElementById(`inpName-${locKey}`).value.trim();
-                const phone = document.getElementById(`inpPhone-${locKey}`).value.trim();
+                const k = locKey;
+                const name = valOf(`inpName-${k}`);
+                const phone1 = valOf(`inpPhone1-${k}`);
 
-                if (!name || !phone) return alert('Nama Pemilik dan No. HP/WhatsApp Wajib Diisi!');
+                if (!name || !phone1) return alert('Nama Customer dan No. HP/WhatsApp 1 Wajib Diisi!');
+
+                const spareparts = [1, 2, 3].map(n => ({
+                    name: valOf(`inpSpName${n}-${k}`) || null,
+                    quantity: valOf(`inpSpQty${n}-${k}`) ? parseInt(valOf(`inpSpQty${n}-${k}`)) : null,
+                    code: valOf(`inpSpCode${n}-${k}`) || null,
+                    price: valOf(`inpSpPrice${n}-${k}`) ? parseFloat(valOf(`inpSpPrice${n}-${k}`)) : null,
+                }));
 
                 const payload = {
-                    service_type: locKey,
+                    service_type: k,
                     customer_name: name,
-                    customer_phone: phone,
-                    device_model: document.getElementById(`inpModel-${locKey}`).value.trim() || 'HEM-7120',
-                    serial_number: document.getElementById(`inpSN-${locKey}`).value.trim() || '-',
-                    complaint: document.getElementById(`inpKeluhan-${locKey}`).value.trim() || '-'
+                    instansi_name: valOf(`inpInstansi-${k}`) || null,
+                    customer_phone: phone1,
+                    customer_phone_2: valOf(`inpPhone2-${k}`) || null,
+                    customer_address: valOf(`inpAddress-${k}`) || null,
+                    province: valOf(`inpProvince-${k}`) || null,
+                    city: valOf(`inpCity-${k}`) || null,
+                    received_date: toIsoOrNull(valOf(`inpReceivedDate-${k}`)),
+                    completed_date: toIsoOrNull(valOf(`inpCompletedDate-${k}`)),
+                    product_category: valOf(`inpCategory-${k}`) || null,
+                    device_model: valOf(`inpModel-${k}`) || '-',
+                    serial_number: valOf(`inpSN-${k}`) || '-',
+                    accessories: valOf(`inpAccessories-${k}`) || null,
+                    warranty_status: valOf(`inpWarrantyStatus-${k}`) || 'Out of Warranty',
+                    warranty_period: valOf(`inpWarrantyPeriod-${k}`) || null,
+                    product_origin: valOf(`inpOrigin-${k}`) || null,
+                    complaint: valOf(`inpKeluhan-${k}`) || '-',
+                    technician_analysis: valOf(`inpAnalysis-${k}`) || null,
+                    symptom_code: valOf(`inpSymptom-${k}`) || null,
+                    leadtime_days: valOf(`inpLeadtime-${k}`) ? parseInt(valOf(`inpLeadtime-${k}`)) : 1,
+                    notes: valOf(`inpNotes-${k}`) || null,
+                    remarks: valOf(`inpRemarks-${k}`) || null,
+                    status: valOf(`inpStatus-${k}`) || 'Diterima',
+                    spareparts: spareparts,
+                    notif_receipt_whatsapp: document.getElementById(`inpNotifReceiptWA-${k}`).checked,
+                    notif_receipt_email: document.getElementById(`inpNotifReceiptEmail-${k}`).checked,
+                    notif_report_whatsapp: document.getElementById(`inpNotifReportWA-${k}`).checked,
+                    notif_report_email: document.getElementById(`inpNotifReportEmail-${k}`).checked,
                 };
 
                 try {
@@ -769,9 +992,9 @@ def admin_dashboard_page():
                     const resData = await res.json();
 
                     if (res.ok) {
-                        alert(`BERHASIL! Tiket ${resData.ticket_number} berhasil masuk khusus ke Data ${locKey.toUpperCase()}!`);
-                        hideFormInPage(locKey);
-                        renderTableData('service-' + locKey);
+                        alert(`BERHASIL! Tiket ${resData.ticket_number} berhasil masuk khusus ke Data ${k.toUpperCase()}!`);
+                        hideFormInPage(k);
+                        renderTableData('service-' + k);
                         updateDashboardStats();
                     } else {
                         alert(resData.detail || 'Gagal menyimpan tiket.');
@@ -871,6 +1094,62 @@ def admin_dashboard_page():
                         throw new Error(data.detail || 'Gagal mengubah status user.');
                     }
                     renderUsers();
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            // ---------- KELOLA MODEL ALAT (Super Admin) ----------
+
+            function toggleDeviceModelForm() {
+                document.getElementById('deviceModelFormBox').classList.toggle('hidden');
+            }
+
+            async function renderDeviceModels() {
+                try {
+                    const res = await authFetch('/api/v1/device-models/');
+                    if (!res.ok) return;
+                    const models = await res.json();
+                    const el = document.getElementById('tableDeviceModels');
+                    el.innerHTML = models.length ? models.map(m => `
+                        <tr>
+                            <td>${m.category}</td>
+                            <td>${m.model_name}</td>
+                            <td><button class="btn btn-danger" onclick="deactivateDeviceModel(${m.id})">Nonaktifkan</button></td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="3" style="text-align:center;">Belum ada model alat ditambahkan.</td></tr>`;
+                } catch(e) { console.error(e); }
+            }
+
+            async function createDeviceModel() {
+                const category = document.getElementById('dmCategory').value;
+                const model_name = document.getElementById('dmModelName').value.trim();
+                if (!model_name) return alert('Nama Model wajib diisi.');
+
+                try {
+                    const res = await authFetch('/api/v1/device-models/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category, model_name })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal menambah model.');
+                    document.getElementById('dmModelName').value = '';
+                    renderDeviceModels();
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function deactivateDeviceModel(modelId) {
+                if (!confirm('Nonaktifkan model ini? Model tidak akan muncul lagi di dropdown, tapi tiket lama yang sudah pakai model ini tetap aman.')) return;
+                try {
+                    const res = await authFetch(`/api/v1/device-models/${modelId}`, { method: 'DELETE' });
+                    if (!res.ok) {
+                        const data = await res.json();
+                        throw new Error(data.detail || 'Gagal menonaktifkan model.');
+                    }
+                    renderDeviceModels();
                 } catch(e) {
                     alert(e.message);
                 }
