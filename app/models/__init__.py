@@ -1,17 +1,23 @@
 from app.db.session import Base
 from app.models.enums import LocationType, UserRole, TicketStatus, PaymentStatusEnum, MutationStatus
-from app.models.user_location import Location, User
-from app.models.service import DeviceCategory, DeviceModel, ServiceTicket
+from app.models.user_location import Location
+from app.models.service import DeviceCategory, DeviceModel
 from app.models.inventory import SparePart, StockInventory, StockMutation
+# ServiceTicket, User, dan LocationCounter yang SUNGGUHAN (dipakai oleh
+# seluruh sistem auth & ticketing yang sudah berjalan) ada di schema.py -
+# WAJIB diimpor di sini juga supaya Alembic/create_all melihat semuanya
+# dalam satu metadata yang sama, tanpa duplikat nama tabel.
+from app.models.schema import ServiceTicket, User, LocationCounter
 
 __all__ = [
-    "Base", 
-    "Location", 
-    "User", 
-    "DeviceCategory", 
-    "DeviceModel", 
-    "ServiceTicket", 
-    "SparePart", 
-    "StockInventory", 
-    "StockMutation"
+    "Base",
+    "Location",
+    "User",
+    "DeviceCategory",
+    "DeviceModel",
+    "ServiceTicket",
+    "SparePart",
+    "StockInventory",
+    "StockMutation",
+    "LocationCounter",
 ]

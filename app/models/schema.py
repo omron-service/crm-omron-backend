@@ -1,9 +1,12 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-Base = declarative_base()
+# PENTING: Base TIDAK dibuat di sini lagi. Base yang sebenarnya sekarang hidup
+# di app/db/session.py, dipakai bersama oleh SEMUA file model di project ini
+# (schema.py, user_location.py, service.py, inventory.py) supaya tidak ada
+# dua metadata terpisah yang bentrok satu sama lain.
+from app.db.session import Base
 
 
 class ServiceTicket(Base):

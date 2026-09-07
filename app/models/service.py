@@ -1,8 +1,14 @@
-from sqlalchemy import Column, Integer, String, Enum, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, Text
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 from app.db.session import Base
-from app.models.enums import TicketStatus, PaymentStatusEnum
+
+# CATATAN PENTING: class `ServiceTicket` yang tadinya ada di file ini SUDAH
+# DIHAPUS karena bentrok (nama tabel "service_tickets" sama persis, kolom
+# berbeda) dengan `ServiceTicket` di app/models/schema.py - yaitu ServiceTicket
+# yang SUNGGUHAN dipakai oleh seluruh alur create-tiket pusat/cabang/pickup
+# yang sudah berjalan. Relationship `tickets` di DeviceModel ikut dihapus
+# karena ServiceTicket versi ini sudah tidak ada.
+
 
 class DeviceCategory(Base):
     __tablename__ = "device_categories"
@@ -11,27 +17,10 @@ class DeviceCategory(Base):
     description = Column(Text, nullable=True)
     models = relationship("DeviceModel", back_populates="category")
 
+
 class DeviceModel(Base):
     __tablename__ = "device_models"
     id = Column(Integer, primary_key=True, index=True)
     category_id = Column(Integer, ForeignKey("device_categories.id"), nullable=False)
     model_name = Column(String(100), nullable=False)
     category = relationship("DeviceCategory", back_populates="models")
-    tickets = relationship("ServiceTicket", back_populates="device_model")
-
-class ServiceTicket(Base):
-    __tablename__ = "service_tickets"
-    id = Column(Integer, primary_key=True, index=True)
-    ticket_number = Column(String(50), unique=True, index=True, nullable=False)
-    customer_name = Column(String(100), nullable=False)
-    customer_phone = Column(String(20), nullable=False)
-    device_model_id = Column(Integer, ForeignKey("device_models.id"), nullable=False)
-    serial_number = Column(String(100), nullable=False)
-    problem_description = Column(Text, nullable=False)
-    status = Column(Enum(TicketStatus), default=TicketStatus.RECEIVED)
-    payment_status = Column(Enum(PaymentStatusEnum), default=PaymentStatusEnum.UNPAID)
-    current_location_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    device_model = relationship("DeviceModel", back_populates="tickets")
-    current_location = relationship("Location")

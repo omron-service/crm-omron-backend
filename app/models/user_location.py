@@ -1,7 +1,14 @@
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Enum
 from sqlalchemy.orm import relationship
 from app.db.session import Base
-from app.models.enums import LocationType, UserRole
+from app.models.enums import LocationType
+
+# CATATAN PENTING: class `User` yang tadinya ada di file ini SUDAH DIHAPUS
+# karena bentrok (nama tabel "users" sama persis, kolom berbeda) dengan
+# `User` di app/models/schema.py - yaitu User yang SUNGGUHAN dipakai oleh
+# seluruh sistem login/auth yang sudah berjalan. Relationship `users` di
+# bawah ini ikut dihapus karena User versi ini sudah tidak ada.
+
 
 class Location(Base):
     __tablename__ = "locations"
@@ -12,17 +19,4 @@ class Location(Base):
     location_type = Column(Enum(LocationType), nullable=False)
     address = Column(String(255), nullable=True)
 
-    users = relationship("User", back_populates="location")
     inventories = relationship("StockInventory", back_populates="location")
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(100), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(100), nullable=False)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.TECHNICIAN)
-    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
-
-    location = relationship("Location", back_populates="users")
