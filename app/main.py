@@ -1,13 +1,18 @@
+from datetime import datetime
+from typing import Optional
+
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.v1 import mutations, services_api
-from app.api.v1.services_api import get_db
-from app.models.schema import ServiceTicket
+from app.api.v1 import mutations, services_api, auth as auth_api
+from app.db.session import get_db, init_db
+from app.core.deps import get_current_user, require_department_access
+from app.models.schema import ServiceTicket, User
 from app.services.excel_export import generate_service_report_excel
 
 limiter = Limiter(key_func=get_remote_address)
@@ -15,6 +20,16 @@ app = FastAPI(title="CRM Omron Healthcare API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
+@app.on_event("startup")
+def _on_startup():
+    # Aman dipanggil berkali-kali: hanya membuat tabel yang belum ada,
+    # TIDAK PERNAH menghapus/mengubah tabel atau data yang sudah ada.
+    init_db()
+
+
+app.include_router(auth_api.router)
+app.include_router(auth_api.admin_users_router)
 app.include_router(mutations.router)
 app.include_router(services_api.router)
 
@@ -31,14 +46,17 @@ def track_ticket_api(request: Request, ticket_number: str, phone: str = "", db: 
         raise HTTPException(status_code=400, detail="Nomor HP/WhatsApp wajib diisi untuk verifikasi.")
 
     ticket = db.query(ServiceTicket).filter(ServiceTicket.ticket_number == ticket_number.strip()).first()
-    
+
     if not ticket:
         raise HTTPException(status_code=404, detail="Nomor tiket tidak ditemukan.")
 
     db_phone = "".join(filter(str.isdigit, ticket.customer_phone or ""))
     input_phone = "".join(filter(str.isdigit, phone or ""))
 
-    if not db_phone or not input_phone or not (db_phone in input_phone or input_phone in db_phone or db_phone[-8:] == input_phone[-8:]):
+    # Verifikasi disederhanakan & diperketat: bandingkan 8 digit terakhir SAJA
+    # (bukan lagi substring bebas), supaya nomor pendek tidak salah cocok
+    # dengan potongan nomor lain.
+    if not db_phone or not input_phone or len(input_phone) < 8 or db_phone[-8:] != input_phone[-8:]:
         raise HTTPException(status_code=403, detail="Nomor HP/WhatsApp tidak cocok dengan nomor yang terdaftar pada tiket ini.")
 
     return {
@@ -52,21 +70,46 @@ def track_ticket_api(request: Request, ticket_number: str, phone: str = "", db: 
 
 
 @app.get("/api/v1/admin/reports/excel")
-def download_excel_report():
-    mock_tickets = [
+def download_excel_report(
+    service_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    DIPERBAIKI: sebelumnya endpoint ini SELALU mengembalikan 1 baris data mock
+    yang di-hardcode, tidak peduli tombol "Download Excel" yang mana yang
+    diklik. Sekarang laporan diambil dari data ASLI di database, dan wajib
+    login (tidak lagi publik), serta staff hanya bisa unduh data
+    departemennya sendiri.
+    """
+    query = db.query(ServiceTicket)
+
+    if service_type:
+        srv = service_type.lower().strip()
+        require_department_access(current_user, srv)
+        query = query.filter(func.lower(ServiceTicket.service_type) == srv)
+    elif current_user.role != "superadmin":
+        query = query.filter(func.lower(ServiceTicket.service_type) == current_user.department)
+
+    tickets = query.order_by(ServiceTicket.id).all()
+
+    rows = [
         {
-            "ticket_number": "JKT-2600001",
-            "created_at": "2026-09-01",
-            "customer_name": "Budi Santoso",
-            "customer_phone": "081234567890",
-            "device_model": "HEM-7120",
-            "serial_number": "SN7120-9921",
-            "status": "Diproses",
-            "technician": "Ahmad Teknisi",
+            "ticket_number": t.ticket_number,
+            "created_at": t.created_at.strftime("%Y-%m-%d") if t.created_at else "-",
+            "customer_name": t.customer_name,
+            "customer_phone": t.customer_phone,
+            "device_model": t.device_model,
+            "serial_number": t.serial_number or "-",
+            "status": t.status or "Diproses",
+            "technician": t.technician_analysis or "-",
         }
+        for t in tickets
     ]
-    excel_file = generate_service_report_excel(mock_tickets)
-    filename = "Laporan_Servis_Omron_2026.xlsx"
+
+    excel_file = generate_service_report_excel(rows)
+    label = service_type or (current_user.department if current_user.role != "superadmin" else "semua")
+    filename = f"Laporan_Servis_Omron_{label}_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
         excel_file,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -102,7 +145,7 @@ def track_ticket_page():
         <div class="card">
             <div class="logo">OMRON</div>
             <div class="subtitle">Layanan Pelacakan Servis Perangkat</div>
-            
+
             <div class="form-group">
                 <label>Nomor Tiket Servis</label>
                 <input type="text" id="ticketInput" placeholder="Contoh: JKT-2600001">
@@ -114,7 +157,7 @@ def track_ticket_page():
             </div>
 
             <button onclick="trackTicket()">Lacak Status Perangkat</button>
-            
+
             <div id="errorBox" class="error-box"></div>
             <div id="resultBox" class="result"></div>
         </div>
@@ -175,7 +218,7 @@ def admin_dashboard_page():
         <style>
             * { box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
             body { margin: 0; background: #f4f6f9; color: #333; display: flex; height: 100vh; overflow: hidden; }
-            
+
             aside { width: 260px; background: #003d80; color: white; display: flex; flex-direction: column; flex-shrink: 0; }
             aside .brand { padding: 20px; font-size: 18px; font-weight: bold; background: #002b5c; border-bottom: 1px solid rgba(255,255,255,0.1); }
             aside ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex: 1; }
@@ -187,6 +230,7 @@ def admin_dashboard_page():
             aside .submenu li a:hover, aside .submenu li a.active { background: #0056b3; color: white; font-weight: bold; }
             aside .single-menu { padding: 12px 20px; display: block; color: white; text-decoration: none; font-weight: bold; font-size: 14px; }
             aside .single-menu:hover { background: #0056b3; }
+            aside .single-menu.hidden-menu { display: none; }
 
             main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
             header { background: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; }
@@ -195,7 +239,7 @@ def admin_dashboard_page():
 
             .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); margin-bottom: 20px; }
             h2 { color: #0056b3; margin-top: 0; font-size: 16px; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
-            
+
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { border: 1px solid #ddd; padding: 9px 12px; text-align: left; font-size: 13px; }
             th { background: #f8f9fa; color: #444; }
@@ -204,7 +248,7 @@ def admin_dashboard_page():
             .form-group { margin-bottom: 8px; }
             label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px; color: #444; }
             input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
-            
+
             .action-header { display: flex; gap: 10px; align-items: center; }
             .search-input { width: 250px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
 
@@ -216,18 +260,17 @@ def admin_dashboard_page():
             .btn-warning { background: #ffc107; color: #212529; }
             .btn-info { background: #17a2b8; color: white; }
             .hidden { display: none !important; }
-            .login-box { max-width: 400px; margin: 80px auto; }
+            .login-box { max-width: 400px; margin: 60px auto; }
             .badge { padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
             .badge-lunas { background: #d4edda; color: #155724; }
             .badge-pending { background: #fff3cd; color: #856404; }
+            .badge-active { background: #d4edda; color: #155724; }
+            .badge-inactive { background: #f8d7da; color: #721c24; }
             .required { color: red; }
-            .sparepart-box { background: #f8f9fa; border: 1px dashed #ccc; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
-
-            .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 999; }
-            .modal-content { background: white; width: 90%; max-width: 500px; border-radius: 8px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-            .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
-            .modal-header h3 { margin: 0; color: #0056b3; font-size: 16px; }
-            .close-btn { font-size: 20px; cursor: pointer; border: none; background: none; font-weight: bold; color: #888; }
+            .auth-tabs { display: flex; margin-bottom: 15px; border-bottom: 1px solid #ddd; }
+            .auth-tabs div { flex: 1; text-align: center; padding: 10px; cursor: pointer; font-weight: bold; color: #888; font-size: 13px; }
+            .auth-tabs div.active { color: #0056b3; border-bottom: 3px solid #0056b3; }
+            .auth-error { color: #721c24; background: #f8d7da; border: 1px solid #f5c6cb; padding: 8px; border-radius: 5px; font-size: 12px; margin-bottom: 10px; display: none; }
         </style>
     </head>
     <body>
@@ -240,40 +283,25 @@ def admin_dashboard_page():
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-service')">2. Data Service <span>▼</span></div>
                     <ul id="sub-service" class="submenu open">
-                        <li><a href="#" class="active" onclick="showTab('service-pusat')">a. Data di Pusat</a></li>
-                        <li><a href="#" onclick="showTab('service-cabang')">b. Data di Cabang</a></li>
-                        <li><a href="#" onclick="showTab('service-pickup')">c. Data di Pickup Center</a></li>
+                        <li><a href="#" data-loc="pusat" class="active" onclick="showTab('service-pusat')">a. Data di Pusat</a></li>
+                        <li><a href="#" data-loc="cabang" onclick="showTab('service-cabang')">b. Data di Cabang</a></li>
+                        <li><a href="#" data-loc="pickup" onclick="showTab('service-pickup')">c. Data di Pickup Center</a></li>
                     </ul>
                 </li>
 
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-payment')">3. Status Payment Service <span>▼</span></div>
                     <ul id="sub-payment" class="submenu">
-                        <li><a href="#" onclick="showTab('payment-pusat')">a. Payment di Pusat</a></li>
-                        <li><a href="#" onclick="showTab('payment-cabang')">b. Payment di Cabang</a></li>
-                        <li><a href="#" onclick="showTab('payment-pickup')">c. Payment di Pickup Center</a></li>
+                        <li><a href="#" data-loc="pusat" onclick="showTab('payment-pusat')">a. Payment di Pusat</a></li>
+                        <li><a href="#" data-loc="cabang" onclick="showTab('payment-cabang')">b. Payment di Cabang</a></li>
+                        <li><a href="#" data-loc="pickup" onclick="showTab('payment-pickup')">c. Payment di Pickup Center</a></li>
                     </ul>
                 </li>
 
-                <li>
-                    <div class="menu-title" onclick="toggleSubmenu('sub-inventory')">4. Inventory Part <span>▼</span></div>
-                    <ul id="sub-inventory" class="submenu">
-                        <li><a href="#" onclick="showTab('inv-pusat-list')">a.1. List Stok Pusat</a></li>
-                        <li><a href="#" onclick="showTab('inv-pusat-pakai')">a.2. Pemakaian Stok Pusat</a></li>
-                        <li><a href="#" onclick="showTab('inv-pusat-terima')">a.3. Penerimaan dr Gudang Utama</a></li>
-                        <li><a href="#" onclick="showTab('inv-pusat-kirim')">a.4. Pengiriman ke Cabang</a></li>
-                        <li><a href="#" onclick="showTab('inv-cabang-list')">b.1. List Stok Cabang</a></li>
-                        <li><a href="#" onclick="showTab('inv-cabang-pakai')">b.2. Pemakaian Stok Cabang</a></li>
-                        <li><a href="#" onclick="showTab('inv-cabang-terima')">b.3. Penerimaan dr Pusat</a></li>
-                        <li><a href="#" onclick="showTab('inv-cabang-minta')">b.4. Permintaan Stok ke Pusat</a></li>
-                    </ul>
-                </li>
-
-                <li>
-                    <div class="menu-title" onclick="toggleSubmenu('sub-setting')">5. Setting (Super Admin) <span>▼</span></div>
+                <li id="menu-setting">
+                    <div class="menu-title" onclick="toggleSubmenu('sub-setting')">4. Setting (Super Admin) <span>▼</span></div>
                     <ul id="sub-setting" class="submenu">
-                        <li><a href="#" onclick="showTab('setting-fields')">a. Field Data Service</a></li>
-                        <li><a href="#" onclick="showTab('setting-payment')">b. Field Payment & Reset Kode</a></li>
+                        <li><a href="#" onclick="showTab('setting-users')">a. Kelola User</a></li>
                     </ul>
                 </li>
             </ul>
@@ -283,24 +311,48 @@ def admin_dashboard_page():
             <header>
                 <h1 id="pageTitle">Portal Management System</h1>
                 <div>
-                    <button id="btnSyncDb" class="btn btn-warning hidden" style="margin-right: 10px;" onclick="syncDatabase()">🔄 Sync DB</button>
                     <span id="userStatus" style="font-weight: bold; font-size: 13px; margin-right: 15px;">Belum Login</span>
                     <button id="btnLogout" class="btn btn-danger hidden" onclick="logout()">Logout</button>
                 </div>
             </header>
 
             <div class="content">
-                <div id="loginCard" class="card login-box">
-                    <h2>Login Super Admin / Internal</h2>
-                    <div class="form-group">
-                        <label>Email / Username</label>
-                        <input type="email" id="emailInput" value="superadmin@omron.co.id">
+                <div id="authCard" class="card login-box">
+                    <div class="auth-tabs">
+                        <div id="tabLoginBtn" class="active" onclick="switchAuthTab('login')">Login</div>
+                        <div id="tabBootstrapBtn" onclick="switchAuthTab('bootstrap')">Setup Awal</div>
                     </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="passwordInput" value="AdminOmron2026!">
+
+                    <div id="authError" class="auth-error"></div>
+
+                    <div id="loginPane">
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="loginEmail" placeholder="nama@omron.co.id">
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" id="loginPassword">
+                        </div>
+                        <button class="btn" style="width: 100%;" onclick="login()">Masuk ke Sistem</button>
                     </div>
-                    <button class="btn" style="width: 100%;" onclick="login()">Masuk ke Sistem</button>
+
+                    <div id="bootstrapPane" class="hidden">
+                        <p style="font-size:12px; color:#666;">Form ini hanya bisa dipakai SATU KALI, saat sistem belum punya akun sama sekali, untuk membuat akun Super Admin pertama.</p>
+                        <div class="form-group">
+                            <label>Nama Lengkap</label>
+                            <input type="text" id="bsName">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="bsEmail">
+                        </div>
+                        <div class="form-group">
+                            <label>Password (min. 8 karakter)</label>
+                            <input type="password" id="bsPassword">
+                        </div>
+                        <button class="btn btn-success" style="width: 100%;" onclick="bootstrapSuperadmin()">Buat Akun Super Admin</button>
+                    </div>
                 </div>
 
                 <!-- 1. DASHBOARD -->
@@ -324,129 +376,10 @@ def admin_dashboard_page():
                     </div>
                 </div>
 
-                <!-- 2a. DATA SERVICE - PUSAT -->
-                <div id="tab-service-pusat" class="tab-content hidden">
-                    <div id="view-table-service-pusat" class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">2a. Data Service - Pusat</h2>
-                            <div class="action-header">
-                                <input type="text" id="search-service-pusat" class="search-input" placeholder="Cari tiket / nama / SN..." onkeyup="filterTable('service-pusat')">
-                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
-                                <button class="btn btn-success" onclick="showFormInPage('service-pusat')">+ Input Tiket PUSAT</button>
-                            </div>
-                        </div>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>No. Tiket</th>
-                                    <th>Pemilik</th>
-                                    <th>No. HP/WA</th>
-                                    <th>Model Alat</th>
-                                    <th>Serial No.</th>
-                                    <th>Garansi</th>
-                                    <th>Keluhan</th>
-                                    <th>Status</th>
-                                    <th>Tgl Diterima</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tableServicePusat"></tbody>
-                        </table>
-                    </div>
-
-                    <div id="view-form-service-pusat" class="card hidden">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
-                            <h2 style="margin: 0; border: none;">Form Input Tiket Servis - PUSAT (JKT)</h2>
-                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pusat')">← Kembali ke Tabel</button>
-                        </div>
-                        <div id="formContainer-service-pusat"></div>
-                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pusat')">Batal</button>
-                            <button class="btn btn-success" onclick="savePageFormData('service-pusat')">Simpan ke Data PUSAT</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2b. DATA SERVICE - CABANG -->
-                <div id="tab-service-cabang" class="tab-content hidden">
-                    <div id="view-table-service-cabang" class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">2b. Data Service - Cabang</h2>
-                            <div class="action-header">
-                                <input type="text" id="search-service-cabang" class="search-input" placeholder="Cari tiket / nama / SN..." onkeyup="filterTable('service-cabang')">
-                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
-                                <button class="btn btn-success" onclick="showFormInPage('service-cabang')">+ Input Tiket CABANG</button>
-                            </div>
-                        </div>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>No. Tiket</th>
-                                    <th>Cabang</th>
-                                    <th>Pemilik</th>
-                                    <th>Model Alat</th>
-                                    <th>Serial No.</th>
-                                    <th>Garansi</th>
-                                    <th>Status</th>
-                                    <th>Tgl Diterima</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tableServiceCabang"></tbody>
-                        </table>
-                    </div>
-
-                    <div id="view-form-service-cabang" class="card hidden">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
-                            <h2 style="margin: 0; border: none;">Form Input Tiket Servis - CABANG (CBG)</h2>
-                            <button class="btn btn-secondary" onclick="hideFormInPage('service-cabang')">← Kembali ke Tabel</button>
-                        </div>
-                        <div id="formContainer-service-cabang"></div>
-                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                            <button class="btn btn-secondary" onclick="hideFormInPage('service-cabang')">Batal</button>
-                            <button class="btn btn-success" onclick="savePageFormData('service-cabang')">Simpan ke Data CABANG</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2c. DATA SERVICE - PICKUP CENTER -->
-                <div id="tab-service-pickup" class="tab-content hidden">
-                    <div id="view-table-service-pickup" class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h2 style="margin: 0; border: none;">2c. Data Service - Pickup Center</h2>
-                            <div class="action-header">
-                                <input type="text" id="search-service-pickup" class="search-input" placeholder="Cari tiket / nama / SN..." onkeyup="filterTable('service-pickup')">
-                                <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">📊 Download Excel</a>
-                                <button class="btn btn-success" onclick="showFormInPage('service-pickup')">+ Input Tiket PICKUP</button>
-                            </div>
-                        </div>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>No. Tiket</th>
-                                    <th>Pickup Point</th>
-                                    <th>Pemilik</th>
-                                    <th>Model Alat</th>
-                                    <th>Serial No.</th>
-                                    <th>Garansi</th>
-                                    <th>Status Kurir</th>
-                                    <th>Tgl Diterima</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tableServicePickup"></tbody>
-                        </table>
-                    </div>
-
-                    <div id="view-form-service-pickup" class="card hidden">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 10px;">
-                            <h2 style="margin: 0; border: none;">Form Input Tiket Servis - PICKUP CENTER (PKP)</h2>
-                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pickup')">← Kembali ke Tabel</button>
-                        </div>
-                        <div id="formContainer-service-pickup"></div>
-                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                            <button class="btn btn-secondary" onclick="hideFormInPage('service-pickup')">Batal</button>
-                            <button class="btn btn-success" onclick="savePageFormData('service-pickup')">Simpan ke Data PICKUP</button>
-                        </div>
-                    </div>
-                </div>
+                <!-- 2a/b/c DATA SERVICE (dibuat dari 1 template JS, id tetap unik per lokasi) -->
+                <div id="tab-service-pusat" class="tab-content hidden"></div>
+                <div id="tab-service-cabang" class="tab-content hidden"></div>
+                <div id="tab-service-pickup" class="tab-content hidden"></div>
 
                 <!-- 3. STATUS PAYMENT SERVICE -->
                 <div id="tab-payment-pusat" class="tab-content hidden">
@@ -454,89 +387,71 @@ def admin_dashboard_page():
                         <h2>3a. Status Payment Service - Pusat (Out of Warranty)</h2>
                         <table>
                             <thead>
-                                <tr>
-                                    <th>No. Tiket</th>
-                                    <th>Pemilik</th>
-                                    <th>Model Alat</th>
-                                    <th>Total Biaya</th>
-                                    <th>Kode Payment</th>
-                                    <th>Status Bayar</th>
-                                    <th>Aksi Pembayaran</th>
-                                </tr>
+                                <tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr>
                             </thead>
                             <tbody id="tablePaymentPusat"></tbody>
                         </table>
                     </div>
                 </div>
-
                 <div id="tab-payment-cabang" class="tab-content hidden">
                     <div class="card">
                         <h2>3b. Status Payment Service - Cabang (Out of Warranty)</h2>
                         <table>
                             <thead>
-                                <tr>
-                                    <th>No. Tiket</th>
-                                    <th>Cabang</th>
-                                    <th>Pemilik</th>
-                                    <th>Total Biaya</th>
-                                    <th>Kode Payment</th>
-                                    <th>Status Bayar</th>
-                                    <th>Aksi Pembayaran</th>
-                                </tr>
+                                <tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr>
                             </thead>
                             <tbody id="tablePaymentCabang"></tbody>
                         </table>
                     </div>
                 </div>
-
                 <div id="tab-payment-pickup" class="tab-content hidden">
                     <div class="card">
                         <h2>3c. Status Payment Service - Pickup Center (Out of Warranty)</h2>
                         <table>
                             <thead>
-                                <tr>
-                                    <th>No. Tiket</th>
-                                    <th>Pickup Location</th>
-                                    <th>Pemilik</th>
-                                    <th>Total Biaya</th>
-                                    <th>Status Bayar</th>
-                                    <th>Aksi Pembayaran</th>
-                                </tr>
+                                <tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr>
                             </thead>
                             <tbody id="tablePaymentPickup"></tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- 4. INVENTORY PART -->
-                <div id="tab-inv-pusat-list" class="tab-content hidden">
+                <!-- 4. KELOLA USER (Super Admin) -->
+                <div id="tab-setting-users" class="tab-content hidden">
                     <div class="card">
-                        <h2>4a.1. List Stok Spare Part di Pusat</h2>
-                        <table>
-                            <thead><tr><th>Kode Part</th><th>Nama Spare Part</th><th>Kategori</th><th>Stok Pusat</th></tr></thead>
-                            <tbody id="tableInvPusatList"></tbody>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h2 style="border:none; margin:0;">Kelola User per Departemen</h2>
+                            <button class="btn btn-success" onclick="toggleUserForm()">+ Tambah User</button>
+                        </div>
+
+                        <div id="userFormBox" class="sparepart-box hidden" style="margin-top:12px; border:1px dashed #ccc; padding:10px; border-radius:6px;">
+                            <div class="form-grid">
+                                <div class="form-group"><label>Nama Lengkap</label><input id="nuName"></div>
+                                <div class="form-group"><label>Email</label><input id="nuEmail" type="email"></div>
+                                <div class="form-group"><label>Password</label><input id="nuPassword" type="password"></div>
+                                <div class="form-group">
+                                    <label>Role</label>
+                                    <select id="nuRole" onchange="onRoleChange()">
+                                        <option value="staff">Staff (dibatasi 1 departemen)</option>
+                                        <option value="superadmin">Super Admin (akses semua)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="nuDeptWrap">
+                                    <label>Departemen</label>
+                                    <select id="nuDept">
+                                        <option value="pusat">Pusat</option>
+                                        <option value="cabang">Cabang</option>
+                                        <option value="pickup">Pickup Center</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn btn-success" onclick="createUser()">Simpan User</button>
+                        </div>
+
+                        <table style="margin-top:15px;">
+                            <thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Departemen</th><th>Status</th><th>Aksi</th></tr></thead>
+                            <tbody id="tableUsers"></tbody>
                         </table>
-                    </div>
-                </div>
-
-                <div id="tab-inv-pusat-pakai" class="tab-content hidden"><div class="card"><h2>4a.2. Pemakaian Stok di Pusat</h2></div></div>
-                <div id="tab-inv-pusat-terima" class="tab-content hidden"><div class="card"><h2>4a.3. Penerimaan Stok dari Gudang Utama</h2></div></div>
-                <div id="tab-inv-pusat-kirim" class="tab-content hidden"><div class="card"><h2>4a.4. Pengiriman Stok ke Cabang</h2></div></div>
-                <div id="tab-inv-cabang-list" class="tab-content hidden"><div class="card"><h2>4b.1. List Stok di Cabang</h2></div></div>
-                <div id="tab-inv-cabang-pakai" class="tab-content hidden"><div class="card"><h2>4b.2. Pemakaian Stok di Cabang</h2></div></div>
-                <div id="tab-inv-cabang-terima" class="tab-content hidden"><div class="card"><h2>4b.3. Penerimaan Stok dari Pusat</h2></div></div>
-                <div id="tab-inv-cabang-minta" class="tab-content hidden"><div class="card"><h2>4b.4. Permintaan Stok ke Pusat</h2></div></div>
-
-                <!-- 5. SETTING SUPER ADMIN -->
-                <div id="tab-setting-fields" class="tab-content hidden">
-                    <div class="card">
-                        <h2>5a. Setting Field Data Service (Super Admin)</h2>
-                    </div>
-                </div>
-
-                <div id="tab-setting-payment" class="tab-content hidden">
-                    <div class="card">
-                        <h2>5b. Setting Field Status Payment & Kode Payment</h2>
                     </div>
                 </div>
 
@@ -545,38 +460,201 @@ def admin_dashboard_page():
 
         <script>
             let authToken = localStorage.getItem('omron_token') || '';
-            let rawServiceData = {};
+            let currentRole = localStorage.getItem('omron_role') || '';
+            let currentDept = localStorage.getItem('omron_dept') || '';
 
-            window.onload = function() {
+            const LOCATIONS = [
+                { key: 'pusat',  label: 'Pusat',          prefix: 'JKT' },
+                { key: 'cabang', label: 'Cabang',         prefix: 'CBG' },
+                { key: 'pickup', label: 'Pickup Center',  prefix: 'PKP' },
+            ];
+
+            window.onload = async function() {
+                buildServiceTabsHTML();
                 if (authToken) {
-                    showDashboardUI();
+                    await enterDashboard();
+                } else {
+                    await checkBootstrapStatus();
                 }
             };
+
+            // ---------- AUTH ----------
+
+            async function checkBootstrapStatus() {
+                try {
+                    const res = await fetch('/api/v1/auth/bootstrap-status');
+                    const data = await res.json();
+                    if (data.needs_bootstrap) switchAuthTab('bootstrap');
+                } catch(e) {}
+            }
+
+            function switchAuthTab(which) {
+                document.getElementById('authError').style.display = 'none';
+                document.getElementById('tabLoginBtn').classList.toggle('active', which === 'login');
+                document.getElementById('tabBootstrapBtn').classList.toggle('active', which === 'bootstrap');
+                document.getElementById('loginPane').classList.toggle('hidden', which !== 'login');
+                document.getElementById('bootstrapPane').classList.toggle('hidden', which !== 'bootstrap');
+            }
+
+            function showAuthError(msg) {
+                const box = document.getElementById('authError');
+                box.textContent = msg;
+                box.style.display = 'block';
+            }
+
+            async function authFetch(url, options = {}) {
+                options.headers = Object.assign({}, options.headers, {
+                    'Authorization': 'Bearer ' + authToken,
+                });
+                const res = await fetch(url, options);
+                if (res.status === 401) {
+                    logout();
+                    throw new Error('Sesi berakhir, silakan login kembali.');
+                }
+                return res;
+            }
+
+            async function bootstrapSuperadmin() {
+                const full_name = document.getElementById('bsName').value.trim();
+                const email = document.getElementById('bsEmail').value.trim();
+                const password = document.getElementById('bsPassword').value;
+                if (!full_name || !email || !password) return showAuthError('Semua field wajib diisi.');
+
+                try {
+                    const res = await fetch('/api/v1/auth/bootstrap', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ full_name, email, password })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal membuat Super Admin.');
+                    alert('Akun Super Admin berhasil dibuat! Silakan login.');
+                    switchAuthTab('login');
+                    document.getElementById('loginEmail').value = email;
+                } catch(e) {
+                    showAuthError(e.message);
+                }
+            }
+
+            async function login() {
+                const email = document.getElementById('loginEmail').value.trim();
+                const password = document.getElementById('loginPassword').value;
+                if (!email || !password) return showAuthError('Email dan password wajib diisi.');
+
+                try {
+                    const res = await fetch('/api/v1/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Login gagal.');
+
+                    authToken = data.access_token;
+                    currentRole = data.role;
+                    currentDept = data.department || '';
+                    localStorage.setItem('omron_token', authToken);
+                    localStorage.setItem('omron_role', currentRole);
+                    localStorage.setItem('omron_dept', currentDept);
+
+                    await enterDashboard();
+                } catch(e) {
+                    showAuthError(e.message);
+                }
+            }
+
+            function logout() {
+                localStorage.removeItem('omron_token');
+                localStorage.removeItem('omron_role');
+                localStorage.removeItem('omron_dept');
+                location.reload();
+            }
+
+            async function enterDashboard() {
+                document.getElementById('authCard').classList.add('hidden');
+                document.getElementById('sidebar').classList.remove('hidden');
+                document.getElementById('btnLogout').classList.remove('hidden');
+                document.getElementById('userStatus').innerText =
+                    currentRole === 'superadmin' ? 'Super Admin' : `Staff - ${currentDept}`;
+
+                // Staff (non-superadmin) hanya melihat menu sesuai departemennya,
+                // dan tidak melihat menu "Setting (Super Admin)" sama sekali.
+                document.getElementById('menu-setting').style.display = (currentRole === 'superadmin') ? '' : 'none';
+                document.querySelectorAll('[data-loc]').forEach(el => {
+                    const loc = el.getAttribute('data-loc');
+                    if (currentRole !== 'superadmin' && loc !== currentDept) {
+                        el.parentElement.style.display = 'none';
+                    }
+                });
+
+                const startTab = (currentRole === 'superadmin') ? 'dashboard' : `service-${currentDept}`;
+                showTab(startTab);
+            }
 
             function toggleSubmenu(id) {
                 document.getElementById(id).classList.toggle('open');
             }
 
-            function showDashboardUI() {
-                document.getElementById('loginCard').classList.add('hidden');
-                document.getElementById('sidebar').classList.remove('hidden');
-                document.getElementById('btnLogout').classList.remove('hidden');
-                document.getElementById('btnSyncDb').classList.remove('hidden');
-                document.getElementById('userStatus').innerText = 'Super Admin Active';
-                showTab('dashboard');
+            // ---------- BANGUN TAB DATA SERVICE DARI 1 TEMPLATE (fix bug duplikat id form) ----------
+
+            function buildServiceTabsHTML() {
+                LOCATIONS.forEach(loc => {
+                    const root = document.getElementById(`tab-service-${loc.key}`);
+                    root.innerHTML = `
+                        <div id="view-table-service-${loc.key}" class="card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                                <h2 style="margin:0; border:none;">Data Service - ${loc.label}</h2>
+                                <div class="action-header">
+                                    <input type="text" id="search-service-${loc.key}" class="search-input" placeholder="Cari tiket / nama / SN...">
+                                    <button class="btn btn-secondary" onclick="downloadExcel('${loc.key}')">📊 Download Excel</button>
+                                    <button class="btn btn-success" onclick="showFormInPage('${loc.key}')">+ Input Tiket ${loc.label.toUpperCase()}</button>
+                                </div>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr><th>No. Tiket</th><th>Pemilik</th><th>No. HP/WA</th><th>Model Alat</th><th>Serial No.</th><th>Garansi</th><th>Keluhan</th><th>Status</th><th>Tgl Diterima</th></tr>
+                                </thead>
+                                <tbody id="tableService-${loc.key}"></tbody>
+                            </table>
+                        </div>
+
+                        <div id="view-form-service-${loc.key}" class="card hidden">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:2px solid #0056b3; padding-bottom:10px;">
+                                <h2 style="margin:0; border:none;">Form Input Tiket Servis - ${loc.label} (${loc.prefix})</h2>
+                                <button class="btn btn-secondary" onclick="hideFormInPage('${loc.key}')">← Kembali ke Tabel</button>
+                            </div>
+                            <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
+                                ℹ️ Tiket ini akan terdaftar KHUSUS di data <strong>${loc.label}</strong> saja - tidak akan tampil atau tercatat di lokasi lain.
+                            </div>
+                            <div class="form-section-title">1. Data Pelanggan</div>
+                            <div class="form-grid">
+                                <div class="form-group"><label>Nama Pemilik <span class="required">*</span></label><input id="inpName-${loc.key}" placeholder="Contoh: Budi Santoso"></div>
+                                <div class="form-group"><label>No. HP / WhatsApp <span class="required">*</span></label><input id="inpPhone-${loc.key}" placeholder="081234567890"></div>
+                            </div>
+                            <div class="form-section-title">2. Data Produk</div>
+                            <div class="form-grid">
+                                <div class="form-group"><label>Model Alat</label><input id="inpModel-${loc.key}" value="HEM-7120"></div>
+                                <div class="form-group"><label>Serial No. Alat</label><input id="inpSN-${loc.key}" placeholder="SN2026xxxx"></div>
+                                <div class="form-group"><label>Keluhan</label><input id="inpKeluhan-${loc.key}" placeholder="Keluhan perangkat"></div>
+                            </div>
+                            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                                <button class="btn btn-secondary" onclick="hideFormInPage('${loc.key}')">Batal</button>
+                                <button class="btn btn-success" onclick="savePageFormData('${loc.key}')">Simpan ke Data ${loc.label.toUpperCase()}</button>
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById(`search-service-${loc.key}`).addEventListener('keyup', () => filterTable(loc.key));
+                });
             }
 
             function showTab(tabId) {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-                
                 const target = document.getElementById('tab-' + tabId);
-                if(target) target.classList.remove('hidden');
-
+                if (target) target.classList.remove('hidden');
                 document.getElementById('pageTitle').innerText = 'Menu: ' + tabId.toUpperCase().replace(/-/g, ' ');
 
-                if (tabId.startsWith('service-')) {
-                    hideFormInPage(tabId);
-                }
+                if (tabId.startsWith('service-')) hideFormInPage(tabId.replace('service-', ''));
+                if (tabId === 'setting-users') { renderUsers(); return; }
 
                 renderTableData(tabId);
                 updateDashboardStats();
@@ -584,10 +662,10 @@ def admin_dashboard_page():
 
             async function updateDashboardStats() {
                 try {
-                    const res = await fetch('/api/v1/db/all-tickets');
-                    if(res.ok) {
+                    const res = await authFetch('/api/v1/db/all-tickets');
+                    if (res.ok) {
                         const data = await res.json();
-                        document.getElementById('statPusat').innerText = data.filter(d => (d.service_type || 'pusat').toLowerCase() === 'pusat').length;
+                        document.getElementById('statPusat').innerText = data.filter(d => (d.service_type || '').toLowerCase() === 'pusat').length;
                         document.getElementById('statCabang').innerText = data.filter(d => (d.service_type || '').toLowerCase() === 'cabang').length;
                         document.getElementById('statPickup').innerText = data.filter(d => (d.service_type || '').toLowerCase() === 'pickup').length;
                     }
@@ -595,167 +673,207 @@ def admin_dashboard_page():
             }
 
             async function renderTableData(menu) {
-                // Bersihkan tampilan tabel terlebih dahulu
-                populateTableRows(menu, []);
-
                 let endpoint = '/api/v1/db/all-tickets';
                 if (menu.startsWith('service-') || menu.startsWith('payment-')) {
                     const srvType = menu.replace('service-', '').replace('payment-', '');
                     endpoint = '/api/v1/db/tickets/' + srvType;
                 }
-
                 try {
-                    const res = await fetch(endpoint);
+                    const res = await authFetch(endpoint);
                     if (res.ok) {
-                        let data = await res.json();
-                        rawServiceData[menu] = data;
-
-                        if(menu.startsWith('payment-')) {
-                            populatePaymentRows(menu, data);
-                        } else {
-                            populateTableRows(menu, data);
-                        }
+                        const data = await res.json();
+                        if (menu.startsWith('payment-')) populatePaymentRows(menu, data);
+                        else if (menu.startsWith('service-')) populateTableRows(menu.replace('service-', ''), data);
                     }
-                } catch(e) {
-                    console.error('Error fetching database:', e);
-                }
+                } catch(e) { console.error('Error fetching database:', e); }
             }
 
-            function populateTableRows(menu, data) {
-                if(menu === 'service-pusat' || menu === 'service-cabang' || menu === 'service-pickup') {
-                    const targetEl = menu === 'service-pusat' ? 'tableServicePusat' : (menu === 'service-cabang' ? 'tableServiceCabang' : 'tableServicePickup');
-                    const el = document.getElementById(targetEl);
-                    if(!el) return;
-
-                    el.innerHTML = data.length ? data.map(d => `
-                        <tr>
-                            <td><strong>${d.ticket_number}</strong></td>
-                            <td>${d.customer_name}</td>
-                            <td>${d.customer_phone || '-'}</td>
-                            <td>${d.device_model}</td>
-                            <td>${d.serial_number||'-'}</td>
-                            <td>${d.warranty_status||'Out of Warranty'}</td>
-                            <td>${d.complaint||'-'}</td>
-                            <td><span class="badge badge-lunas">${d.status||'Diproses'}</span></td>
-                            <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
-                        </tr>
-                    `).join('') : `<tr><td colspan="9" style="text-align:center;">Belum ada data di lokasi ini</td></tr>`;
-                }
+            function populateTableRows(locKey, data) {
+                const el = document.getElementById(`tableService-${locKey}`);
+                if (!el) return;
+                el.innerHTML = data.length ? data.map(d => `
+                    <tr>
+                        <td><strong>${d.ticket_number}</strong></td>
+                        <td>${d.customer_name}</td>
+                        <td>${d.customer_phone || '-'}</td>
+                        <td>${d.device_model}</td>
+                        <td>${d.serial_number || '-'}</td>
+                        <td>${d.warranty_status || 'Out of Warranty'}</td>
+                        <td>${d.complaint || '-'}</td>
+                        <td><span class="badge badge-lunas">${d.status || 'Diproses'}</span></td>
+                        <td>${d.created_at ? d.created_at.split('T')[0] : '-'}</td>
+                    </tr>
+                `).join('') : `<tr><td colspan="9" style="text-align:center;">Belum ada data di lokasi ini</td></tr>`;
             }
 
             function populatePaymentRows(menu, data) {
                 const filtered = data.filter(d => !d.warranty_status || d.warranty_status === 'Out of Warranty');
                 const targetEl = menu === 'payment-pusat' ? 'tablePaymentPusat' : (menu === 'payment-cabang' ? 'tablePaymentCabang' : 'tablePaymentPickup');
                 const el = document.getElementById(targetEl);
-                if(!el) return;
-
+                if (!el) return;
                 el.innerHTML = filtered.length ? filtered.map(d => `
                     <tr>
                         <td><strong>${d.ticket_number}</strong></td>
                         <td>${d.customer_name}</td>
                         <td>${d.device_model}</td>
-                        <td>Rp ${(d.total_price || 150000).toLocaleString('id-ID')}</td>
-                        <td><code>${d.payment_code || 'PAY-882019'}</code></td>
+                        <td>Rp ${(d.total_price || 0).toLocaleString('id-ID')}</td>
+                        <td><code>${d.payment_code || '-'}</code></td>
                         <td><span class="badge ${d.payment_status === 'Lunas' ? 'badge-lunas' : 'badge-pending'}">${d.payment_status || 'Belum Lunas'}</span></td>
-                        <td>
-                            <button class="btn btn-info">Input Price</button>
-                            <a href="/api/v1/admin/reports/excel" class="btn btn-secondary">Invoice</a>
-                        </td>
                     </tr>
-                `).join('') : `<tr><td colspan="7" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran di lokasi ini.</td></tr>`;
+                `).join('') : `<tr><td colspan="6" style="text-align:center;">Tidak ada tiket Out of Warranty untuk pembayaran di lokasi ini.</td></tr>`;
             }
 
-            function showFormInPage(menuKey) {
-                document.getElementById('view-table-' + menuKey).classList.add('hidden');
-                const formView = document.getElementById('view-form-' + menuKey);
-                formView.classList.remove('hidden');
-
-                const container = document.getElementById('formContainer-' + menuKey);
-                container.innerHTML = getTicketFormHTML(menuKey);
+            function filterTable(locKey) {
+                const q = document.getElementById(`search-service-${locKey}`).value.toLowerCase();
+                document.querySelectorAll(`#tableService-${locKey} tr`).forEach(row => {
+                    row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
+                });
             }
 
-            function hideFormInPage(menuKey) {
-                const formView = document.getElementById('view-form-' + menuKey);
-                if(formView) formView.classList.add('hidden');
-                const tableView = document.getElementById('view-table-' + menuKey);
-                if(tableView) tableView.classList.remove('hidden');
+            function showFormInPage(locKey) {
+                document.getElementById('view-table-service-' + locKey).classList.add('hidden');
+                document.getElementById('view-form-service-' + locKey).classList.remove('hidden');
             }
 
-            function getTicketFormHTML(menuKey) {
-                const prefixMap = { 'service-pusat': 'JKT', 'service-cabang': 'CBG', 'service-pickup': 'PKP' };
-                const locPrefix = prefixMap[menuKey] || 'JKT';
-
-                return `
-                    <div style="background:#e3f2fd; padding:10px; border-radius:5px; font-size:12px; margin-bottom:15px; color:#0d47a1;">
-                        ℹ️ Tiket ini akan terdaftar khusus di data <strong>${locPrefix}</strong>.
-                    </div>
-
-                    <div class="form-section-title">1. Data Pelanggan</div>
-                    <div class="form-grid">
-                        <div class="form-group"><label>Nama Pemilik <span class="required">*</span></label><input id="inpName" placeholder="Contoh: Budi Santoso"></div>
-                        <div class="form-group"><label>No. HP / WhatsApp <span class="required">*</span></label><input id="inpPhone1" placeholder="081234567890"></div>
-                    </div>
-
-                    <div class="form-section-title">2. Data Produk</div>
-                    <div class="form-grid">
-                        <div class="form-group"><label>Model Alat</label><input id="inpModel" value="HEM-7120"></div>
-                        <div class="form-group"><label>Serial No. Alat</label><input id="inpSN" placeholder="SN2026xxxx"></div>
-                        <div class="form-group"><label>Keluhan</label><input id="inpKeluhan" placeholder="Keluhan perangkat"></div>
-                    </div>
-                `;
+            function hideFormInPage(locKey) {
+                const formView = document.getElementById('view-form-service-' + locKey);
+                if (formView) formView.classList.add('hidden');
+                const tableView = document.getElementById('view-table-service-' + locKey);
+                if (tableView) tableView.classList.remove('hidden');
             }
 
-            async function savePageFormData(menuKey) {
-                const name = document.getElementById('inpName').value.trim();
-                const phone = document.getElementById('inpPhone1').value.trim();
+            async function savePageFormData(locKey) {
+                // Setiap input punya id unik per-lokasi (mis. inpName-pusat, inpName-cabang),
+                // jadi TIDAK ADA LAGI risiko membaca data sisa dari form lokasi lain
+                // yang sebelumnya pernah dibuka (bug id duplikat pada versi lama).
+                const name = document.getElementById(`inpName-${locKey}`).value.trim();
+                const phone = document.getElementById(`inpPhone-${locKey}`).value.trim();
 
-                if(!name || !phone) {
-                    return alert('Nama Pemilik dan No. HP/WhatsApp Wajib Diisi!');
-                }
-
-                // Ambil service_type yang presisi: pusat / cabang / pickup
-                const srvType = menuKey.replace('service-', '');
+                if (!name || !phone) return alert('Nama Pemilik dan No. HP/WhatsApp Wajib Diisi!');
 
                 const payload = {
-                    service_type: srvType,
+                    service_type: locKey,
                     customer_name: name,
                     customer_phone: phone,
-                    device_model: document.getElementById('inpModel').value.trim() || 'HEM-7120',
-                    serial_number: document.getElementById('inpSN').value.trim() || '-',
-                    complaint: document.getElementById('inpKeluhan').value.trim() || '-'
+                    device_model: document.getElementById(`inpModel-${locKey}`).value.trim() || 'HEM-7120',
+                    serial_number: document.getElementById(`inpSN-${locKey}`).value.trim() || '-',
+                    complaint: document.getElementById(`inpKeluhan-${locKey}`).value.trim() || '-'
                 };
 
                 try {
-                    const res = await fetch('/api/v1/db/tickets/', {
+                    const res = await authFetch('/api/v1/db/tickets/', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-
                     const resData = await res.json();
 
                     if (res.ok) {
-                        alert(`BERHASIL! Tiket ${resData.ticket_number} berhasil masuk khusus ke Data ${srvType.toUpperCase()}!`);
-                        hideFormInPage(menuKey);
-                        renderTableData(menuKey);
+                        alert(`BERHASIL! Tiket ${resData.ticket_number} berhasil masuk khusus ke Data ${locKey.toUpperCase()}!`);
+                        hideFormInPage(locKey);
+                        renderTableData('service-' + locKey);
                         updateDashboardStats();
                     } else {
-                        alert('Gagal menyimpan tiket.');
+                        alert(resData.detail || 'Gagal menyimpan tiket.');
                     }
                 } catch(e) {
-                    alert('Error koneksi database: ' + e.message);
+                    alert('Error koneksi: ' + e.message);
                 }
             }
 
-            async function login() {
-                authToken = 'jwt_superadmin_omron_2026';
-                localStorage.setItem('omron_token', authToken);
-                showDashboardUI();
+            async function downloadExcel(locKey) {
+                try {
+                    const res = await authFetch(`/api/v1/admin/reports/excel?service_type=${locKey}`);
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Gagal mengunduh laporan.');
+                    }
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Laporan_Servis_Omron_${locKey}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch(e) {
+                    alert(e.message);
+                }
             }
 
-            function logout() {
-                localStorage.removeItem('omron_token');
-                location.reload();
+            // ---------- KELOLA USER (Super Admin) ----------
+
+            function onRoleChange() {
+                const isStaff = document.getElementById('nuRole').value === 'staff';
+                document.getElementById('nuDeptWrap').style.display = isStaff ? '' : 'none';
+            }
+
+            function toggleUserForm() {
+                document.getElementById('userFormBox').classList.toggle('hidden');
+            }
+
+            async function renderUsers() {
+                try {
+                    const res = await authFetch('/api/v1/admin/users/');
+                    if (!res.ok) return;
+                    const users = await res.json();
+                    const el = document.getElementById('tableUsers');
+                    el.innerHTML = users.map(u => `
+                        <tr>
+                            <td>${u.full_name}</td>
+                            <td>${u.email}</td>
+                            <td>${u.role}</td>
+                            <td>${u.department || '-'}</td>
+                            <td><span class="badge ${u.is_active ? 'badge-active' : 'badge-inactive'}">${u.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+                            <td>
+                                ${u.is_active
+                                    ? `<button class="btn btn-danger" onclick="setUserActive(${u.id}, false)">Nonaktifkan</button>`
+                                    : `<button class="btn btn-success" onclick="setUserActive(${u.id}, true)">Aktifkan</button>`}
+                            </td>
+                        </tr>
+                    `).join('');
+                } catch(e) { console.error(e); }
+            }
+
+            async function createUser() {
+                const payload = {
+                    full_name: document.getElementById('nuName').value.trim(),
+                    email: document.getElementById('nuEmail').value.trim(),
+                    password: document.getElementById('nuPassword').value,
+                    role: document.getElementById('nuRole').value,
+                    department: document.getElementById('nuRole').value === 'staff' ? document.getElementById('nuDept').value : null,
+                };
+                if (!payload.full_name || !payload.email || !payload.password) return alert('Semua field wajib diisi.');
+
+                try {
+                    const res = await authFetch('/api/v1/admin/users/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal membuat user.');
+                    alert('User berhasil dibuat!');
+                    document.getElementById('userFormBox').classList.add('hidden');
+                    renderUsers();
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function setUserActive(userId, active) {
+                const endpoint = `/api/v1/admin/users/${userId}/${active ? 'reactivate' : 'deactivate'}`;
+                try {
+                    const res = await authFetch(endpoint, { method: 'PATCH' });
+                    if (!res.ok) {
+                        const data = await res.json();
+                        throw new Error(data.detail || 'Gagal mengubah status user.');
+                    }
+                    renderUsers();
+                } catch(e) {
+                    alert(e.message);
+                }
             }
         </script>
     </body>
