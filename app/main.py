@@ -258,10 +258,10 @@ def pickup_intake_page():
                         <label>Produk Kategori</label>
                         <select id="pCategory" onchange="onCategoryChange()">
                             <option value="">-- Pilih Kategori --</option>
-                            <option>Arm BPM</option><option>Wrist BPM</option><option>BGM</option><option>BCM</option>
-                            <option>DWS</option><option>Comp-NEB</option><option>Mesh-NEB</option><option>Ultra-NEB</option>
-                            <option>Forehead Thermo</option><option>Ear Thermo</option><option>Pen Thermo</option>
-                            <option>MEDICAL</option><option>TENS</option><option>Others</option>
+                            <option>Arm BPM</option><option>BCM</option><option>BGM</option><option>Comp-NEB</option>
+                            <option>DWS</option><option>Ear Thermo</option><option>Forehead Thermo</option>
+                            <option>MEDICAL</option><option>Mesh-NEB</option><option>Pen Thermo</option>
+                            <option>TENS</option><option>Ultra-NEB</option><option>Wrist BPM</option><option>Others</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -290,26 +290,43 @@ def pickup_intake_page():
 
             async function onCategoryChange() {
                 const category = document.getElementById('pCategory').value;
-                const modelSelect = document.getElementById('pModel');
+                let modelEl = document.getElementById('pModel');
+
                 if (!category) {
-                    modelSelect.innerHTML = '<option value="">-- Pilih Kategori dulu --</option>';
+                    if (modelEl.tagName !== 'SELECT') {
+                        modelEl.outerHTML = '<select id="pModel"><option value="">-- Pilih Kategori dulu --</option></select>';
+                    } else {
+                        modelEl.innerHTML = '<option value="">-- Pilih Kategori dulu --</option>';
+                    }
                     return;
                 }
-                modelSelect.innerHTML = '<option value="">Memuat...</option>';
+
+                if (category === 'Others') {
+                    modelEl.outerHTML = '<input id="pModel" placeholder="Ketik nama model alat">';
+                    return;
+                }
+
+                if (modelEl.tagName !== 'SELECT') {
+                    modelEl.outerHTML = '<select id="pModel"><option value="">Memuat...</option></select>';
+                } else {
+                    modelEl.innerHTML = '<option value="">Memuat...</option>';
+                }
+                modelEl = document.getElementById('pModel');
+
                 try {
                     const res = await fetch(`/api/v1/device-models/public?category=${encodeURIComponent(category)}`);
                     const models = res.ok ? await res.json() : [];
-                    modelSelect.innerHTML = models.length
+                    modelEl.innerHTML = models.length
                         ? '<option value="">-- Pilih Model --</option>' + models.map(m => `<option value="${esc(m.model_name)}">${esc(m.model_name)}</option>`).join('')
                         : '<option value="">(Belum ada model utk kategori ini)</option>';
                 } catch(e) {
-                    modelSelect.innerHTML = '<option value="">Gagal memuat model</option>';
+                    modelEl.innerHTML = '<option value="">Gagal memuat model</option>';
                 }
             }
 
             function resetForm() {
                 document.getElementById('intakeForm').reset();
-                document.getElementById('pModel').innerHTML = '<option value="">-- Pilih Kategori dulu --</option>';
+                document.getElementById('pModel').outerHTML = '<select id="pModel"><option value="">-- Pilih Kategori dulu --</option></select>';
                 document.getElementById('successBox').style.display = 'none';
                 document.getElementById('errorBox').style.display = 'none';
                 document.getElementById('intakeForm').style.display = 'block';
@@ -750,18 +767,18 @@ def admin_dashboard_page():
                                     <label>Kategori Produk</label>
                                     <select id="dmCategory">
                                         <option value="Arm BPM">Arm BPM</option>
-                                        <option value="Wrist BPM">Wrist BPM</option>
-                                        <option value="BGM">BGM</option>
                                         <option value="BCM">BCM</option>
-                                        <option value="DWS">DWS</option>
+                                        <option value="BGM">BGM</option>
                                         <option value="Comp-NEB">Comp-NEB</option>
-                                        <option value="Mesh-NEB">Mesh-NEB</option>
-                                        <option value="Ultra-NEB">Ultra-NEB</option>
-                                        <option value="Forehead Thermo">Forehead Thermo</option>
+                                        <option value="DWS">DWS</option>
                                         <option value="Ear Thermo">Ear Thermo</option>
-                                        <option value="Pen Thermo">Pen Thermo</option>
+                                        <option value="Forehead Thermo">Forehead Thermo</option>
                                         <option value="MEDICAL">MEDICAL</option>
+                                        <option value="Mesh-NEB">Mesh-NEB</option>
+                                        <option value="Pen Thermo">Pen Thermo</option>
                                         <option value="TENS">TENS</option>
+                                        <option value="Ultra-NEB">Ultra-NEB</option>
+                                        <option value="Wrist BPM">Wrist BPM</option>
                                         <option value="Others">Others</option>
                                     </select>
                                 </div>
@@ -920,7 +937,7 @@ def admin_dashboard_page():
 
             // ---------- DATA REFERENSI (statis, tidak perlu API) ----------
 
-            const PRODUCT_CATEGORIES = ["Arm BPM","Wrist BPM","BGM","BCM","DWS","Comp-NEB","Mesh-NEB","Ultra-NEB","Forehead Thermo","Ear Thermo","Pen Thermo","MEDICAL","TENS","Others"];
+            const PRODUCT_CATEGORIES = ["Arm BPM","BCM","BGM","Comp-NEB","DWS","Ear Thermo","Forehead Thermo","MEDICAL","Mesh-NEB","Pen Thermo","TENS","Ultra-NEB","Wrist BPM","Others"];
             const PRODUCT_ORIGINS = ["LEU","EU-DRC","AMS","IDC","APT/TKO","CV/PT/RS","ALPRO"];
             const WARRANTY_STATUS_OPTIONS = ["Under Warranty","Out of Warranty"];
             const WARRANTY_PERIOD_OPTIONS = ["1","2","3","4","5","6"];
@@ -1090,20 +1107,39 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
             async function onCategoryChange(locKey) {
                 const category = document.getElementById(`inpCategory-${locKey}`).value;
-                const modelSelect = document.getElementById(`inpModel-${locKey}`);
+                let modelEl = document.getElementById(`inpModel-${locKey}`);
+
                 if (!category) {
-                    modelSelect.innerHTML = `<option value="">-- Pilih Kategori dulu --</option>`;
+                    if (modelEl.tagName !== 'SELECT') {
+                        modelEl.outerHTML = `<select id="inpModel-${locKey}"><option value="">-- Pilih Kategori dulu --</option></select>`;
+                    } else {
+                        modelEl.innerHTML = `<option value="">-- Pilih Kategori dulu --</option>`;
+                    }
                     return;
                 }
-                modelSelect.innerHTML = `<option value="">Memuat...</option>`;
+
+                if (category === 'Others') {
+                    // Others: model alat tidak wajib ada di katalog - ganti jadi input teks bebas.
+                    modelEl.outerHTML = `<input id="inpModel-${locKey}" placeholder="Ketik nama model alat">`;
+                    return;
+                }
+
+                // Kategori selain Others: pastikan elemennya <select>, lalu isi dari katalog.
+                if (modelEl.tagName !== 'SELECT') {
+                    modelEl.outerHTML = `<select id="inpModel-${locKey}"><option value="">Memuat...</option></select>`;
+                } else {
+                    modelEl.innerHTML = `<option value="">Memuat...</option>`;
+                }
+                modelEl = document.getElementById(`inpModel-${locKey}`); // ambil ulang referensi kalau tadi baru diganti tag-nya
+
                 try {
                     const res = await authFetch(`/api/v1/device-models/?category=${encodeURIComponent(category)}`);
                     const models = res.ok ? await res.json() : [];
-                    modelSelect.innerHTML = models.length
-                        ? `<option value="">-- Pilih Model --</option>` + models.map(m => `<option value="${m.model_name}">${m.model_name}</option>`).join('')
+                    modelEl.innerHTML = models.length
+                        ? `<option value="">-- Pilih Model --</option>` + models.map(m => `<option value="${esc(m.model_name)}">${esc(m.model_name)}</option>`).join('')
                         : `<option value="">(Belum ada model utk kategori ini - tambah di Kelola Model Alat)</option>`;
                 } catch(e) {
-                    modelSelect.innerHTML = `<option value="">Gagal memuat model</option>`;
+                    modelEl.innerHTML = `<option value="">Gagal memuat model</option>`;
                 }
             }
 
@@ -1336,8 +1372,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 onProvinceChange(k);  // ikut kosongkan & reset dropdown Kota
 
                 setVal(`inpCategory-${k}`, '');
-                const modelSelect = document.getElementById(`inpModel-${k}`);
-                if (modelSelect) modelSelect.innerHTML = `<option value="">-- Pilih Kategori dulu --</option>`;
+                document.getElementById(`inpModel-${k}`).outerHTML =
+                    `<select id="inpModel-${k}"><option value="">-- Pilih Kategori dulu --</option></select>`;
 
                 setVal(`inpSN-${k}`, '');
                 setVal(`inpAccessories-${k}`, '');
