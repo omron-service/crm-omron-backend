@@ -25,11 +25,12 @@ VALID_LOCATIONS = ("pusat", "cabang", "pickup")
 PREFIX_BY_LOCATION = {"pusat": "JKT", "cabang": "CBG", "pickup": "PKP"}
 
 # Daftar tetap sesuai spesifikasi form (dipakai backend untuk validasi ringan;
-# tampilan dropdown tetap diatur di frontend)
+# tampilan dropdown tetap diatur di frontend). Diurutkan A-Z, KECUALI "Others"
+# sengaja selalu diletakkan di paling akhir.
 PRODUCT_CATEGORIES = (
-    "Arm BPM", "Wrist BPM", "BGM", "BCM", "DWS", "Comp-NEB", "Mesh-NEB",
-    "Ultra-NEB", "Forehead Thermo", "Ear Thermo", "Pen Thermo", "MEDICAL",
-    "TENS", "Others",
+    "Arm BPM", "BCM", "BGM", "Comp-NEB", "DWS", "Ear Thermo", "Forehead Thermo",
+    "MEDICAL", "Mesh-NEB", "Pen Thermo", "TENS", "Ultra-NEB", "Wrist BPM",
+    "Others",
 )
 PRODUCT_ORIGINS = ("LEU", "EU-DRC", "AMS", "IDC", "APT/TKO", "CV/PT/RS", "ALPRO")
 WARRANTY_STATUS_OPTIONS = ("Under Warranty", "Out of Warranty")
