@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session, joinedload
@@ -27,8 +27,8 @@ PREFIX_BY_LOCATION = {"pusat": "JKT", "cabang": "CBG", "pickup": "PKP"}
 # Daftar tetap sesuai spesifikasi form (dipakai backend untuk validasi ringan;
 # tampilan dropdown tetap diatur di frontend)
 PRODUCT_CATEGORIES = (
-    "Arm BPM", "Wrist BPM", "BGM", "BCM", "DWS", "NEB-Comp", "NEB-Mesh",
-    "NEB-Ultra", "Forehead Thermo", "Ear Thermo", "Pen Thermo", "MEDICAL",
+    "Arm BPM", "Wrist BPM", "BGM", "BCM", "DWS", "Comp-NEB", "Mesh-NEB",
+    "Ultra-NEB", "Forehead Thermo", "Ear Thermo", "Pen Thermo", "MEDICAL",
     "TENS", "Others",
 )
 PRODUCT_ORIGINS = ("LEU", "EU-DRC", "AMS", "IDC", "APT/TKO", "CV/PT/RS", "ALPRO")
@@ -619,3 +619,107 @@ def deactivate_device_model(
     entry.is_active = False
     db.commit()
     return {"status": "success"}
+
+
+@catalog_router.post("/bulk-upload")
+def bulk_upload_device_models(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_role("superadmin")),
+):
+    """
+    Upload katalog Model Alat dari file Excel (.xlsx), format 2 kolom: Model Alat
+    dan Produk Kategori (urutan kolom terdeteksi otomatis dari isi datanya, bukan
+    dari teks header - supaya tetap benar walau header di file kebalik-balik).
+
+    ATURAN PENTING (sesuai permintaan): data yang SUDAH ADA sebelumnya TIDAK PERNAH
+    dihapus/ditimpa isinya. Kombinasi (kategori, model) yang:
+    - BELUM ADA di database -> ditambahkan sebagai entri baru.
+    - SUDAH ADA dan aktif    -> dilewati saja (tidak ada yang perlu diubah).
+    - SUDAH ADA tapi nonaktif -> diaktifkan kembali (satu-satunya bentuk "update").
+    Kombinasi (kategori, model) lain yang SUDAH ADA di database tapi TIDAK
+    disebutkan di file yang diupload TIDAK IKUT DINONAKTIFKAN/DIHAPUS - upload ini
+    murni menambah, tidak pernah mengurangi.
+    """
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="File harus berformat .xlsx (Excel).")
+
+    try:
+        import openpyxl
+        from io import BytesIO
+
+        content = file.file.read()
+        wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
+        ws = wb.active
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Gagal membaca file Excel: {str(e)}")
+
+    valid_categories_lower = {c.lower(): c for c in PRODUCT_CATEGORIES}
+
+    created, reactivated, skipped_existing = 0, 0, 0
+    errors = []
+
+    rows = list(ws.iter_rows(min_row=1, values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="File Excel kosong.")
+
+    # Deteksi baris pertama sebagai header (dilewati) kalau salah satu selnya
+    # cocok dengan kata "kategori" atau "model" (tidak peduli urutan/besar-kecil huruf).
+    start_row = 0
+    header_probe = " ".join(str(v).lower() for v in rows[0] if v)
+    if "kategori" in header_probe or "model" in header_probe:
+        start_row = 1
+
+    for idx, row in enumerate(rows[start_row:], start=start_row + 1):
+        if not row or len(row) < 2:
+            continue
+        col_a = str(row[0]).strip() if row[0] is not None else ""
+        col_b = str(row[1]).strip() if row[1] is not None else ""
+        if not col_a and not col_b:
+            continue  # baris kosong, lewati
+
+        # Deteksi otomatis mana kolom Model dan mana kolom Kategori: kolom yang
+        # isinya cocok (case-insensitive) dengan salah satu PRODUCT_CATEGORIES
+        # dianggap sebagai kolom Kategori, sisanya jadi kolom Model.
+        if col_b.lower() in valid_categories_lower:
+            model_name, category = col_a, valid_categories_lower[col_b.lower()]
+        elif col_a.lower() in valid_categories_lower:
+            model_name, category = col_b, valid_categories_lower[col_a.lower()]
+        else:
+            errors.append({
+                "row": idx,
+                "reason": f"Kategori tidak dikenali (harus salah satu dari: {', '.join(PRODUCT_CATEGORIES)})",
+                "data": f"{col_a} | {col_b}",
+            })
+            continue
+
+        if not model_name:
+            errors.append({"row": idx, "reason": "Nama model kosong", "data": f"{col_a} | {col_b}"})
+            continue
+
+        existing = (
+            db.query(DeviceModelCatalog)
+            .filter(DeviceModelCatalog.category == category, DeviceModelCatalog.model_name == model_name)
+            .first()
+        )
+        if existing:
+            if not existing.is_active:
+                existing.is_active = True
+                reactivated += 1
+            else:
+                skipped_existing += 1
+        else:
+            db.add(DeviceModelCatalog(category=category, model_name=model_name))
+            created += 1
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "total_baris_diproses": len(rows) - start_row,
+        "ditambahkan_baru": created,
+        "diaktifkan_kembali": reactivated,
+        "sudah_ada_dilewati": skipped_existing,
+        "gagal": len(errors),
+        "detail_gagal": errors[:50],  # batasi supaya respons tidak raksasa
+    }
