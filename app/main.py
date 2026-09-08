@@ -259,7 +259,7 @@ def pickup_intake_page():
                         <select id="pCategory" onchange="onCategoryChange()">
                             <option value="">-- Pilih Kategori --</option>
                             <option>Arm BPM</option><option>Wrist BPM</option><option>BGM</option><option>BCM</option>
-                            <option>DWS</option><option>NEB-Comp</option><option>NEB-Mesh</option><option>NEB-Ultra</option>
+                            <option>DWS</option><option>Comp-NEB</option><option>Mesh-NEB</option><option>Ultra-NEB</option>
                             <option>Forehead Thermo</option><option>Ear Thermo</option><option>Pen Thermo</option>
                             <option>MEDICAL</option><option>TENS</option><option>Others</option>
                         </select>
@@ -730,11 +730,19 @@ def admin_dashboard_page():
                 <!-- 4b. KELOLA MODEL ALAT (Super Admin) -->
                 <div id="tab-setting-devicemodels" class="tab-content hidden">
                     <div class="card">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                             <h2 style="border:none; margin:0;">Kelola Model Alat per Kategori</h2>
-                            <button class="btn btn-success" onclick="toggleDeviceModelForm()">+ Tambah Model</button>
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn btn-secondary" onclick="document.getElementById('dmExcelFileInput').click()">📤 Upload dari Excel</button>
+                                <input type="file" id="dmExcelFileInput" accept=".xlsx,.xlsm" style="display:none;" onchange="uploadDeviceModelExcel(this)">
+                                <button class="btn btn-success" onclick="toggleDeviceModelForm()">+ Tambah Model</button>
+                            </div>
                         </div>
                         <p style="font-size:12px; color:#666;">Model yang ditambahkan di sini akan otomatis muncul di dropdown "Model Alat" pada form input tiket, sesuai Kategori Produk yang dipilih.</p>
+                        <p style="font-size:12px; color:#666;">
+                            <strong>Upload dari Excel:</strong> file .xlsx 2 kolom (Model Alat, Produk Kategori - urutan kolom tidak masalah, terdeteksi otomatis).
+                            Data yang sudah ada TIDAK PERNAH hilang/tertimpa - hanya ditambahkan kalau belum ada, atau diaktifkan lagi kalau sebelumnya dinonaktifkan.
+                        </p>
 
                         <div id="deviceModelFormBox" class="hidden" style="margin-top:12px; border:1px dashed #ccc; padding:10px; border-radius:6px;">
                             <div class="form-grid">
@@ -746,9 +754,9 @@ def admin_dashboard_page():
                                         <option value="BGM">BGM</option>
                                         <option value="BCM">BCM</option>
                                         <option value="DWS">DWS</option>
-                                        <option value="NEB-Comp">NEB-Comp</option>
-                                        <option value="NEB-Mesh">NEB-Mesh</option>
-                                        <option value="NEB-Ultra">NEB-Ultra</option>
+                                        <option value="Comp-NEB">Comp-NEB</option>
+                                        <option value="Mesh-NEB">Mesh-NEB</option>
+                                        <option value="Ultra-NEB">Ultra-NEB</option>
                                         <option value="Forehead Thermo">Forehead Thermo</option>
                                         <option value="Ear Thermo">Ear Thermo</option>
                                         <option value="Pen Thermo">Pen Thermo</option>
@@ -912,7 +920,7 @@ def admin_dashboard_page():
 
             // ---------- DATA REFERENSI (statis, tidak perlu API) ----------
 
-            const PRODUCT_CATEGORIES = ["Arm BPM","Wrist BPM","BGM","BCM","DWS","NEB-Comp","NEB-Mesh","NEB-Ultra","Forehead Thermo","Ear Thermo","Pen Thermo","MEDICAL","TENS","Others"];
+            const PRODUCT_CATEGORIES = ["Arm BPM","Wrist BPM","BGM","BCM","DWS","Comp-NEB","Mesh-NEB","Ultra-NEB","Forehead Thermo","Ear Thermo","Pen Thermo","MEDICAL","TENS","Others"];
             const PRODUCT_ORIGINS = ["LEU","EU-DRC","AMS","IDC","APT/TKO","CV/PT/RS","ALPRO"];
             const WARRANTY_STATUS_OPTIONS = ["Under Warranty","Out of Warranty"];
             const WARRANTY_PERIOD_OPTIONS = ["1","2","3","4","5","6"];
@@ -1598,6 +1606,43 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderDeviceModels();
                 } catch(e) {
                     alert(e.message);
+                }
+            }
+
+            async function uploadDeviceModelExcel(inputEl) {
+                const file = inputEl.files[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    // Catatan: JANGAN set header 'Content-Type' manual di sini - browser
+                    // yang mengisi otomatis (termasuk boundary multipart-nya), kalau
+                    // dipaksa manual malah rusak.
+                    const res = await authFetch('/api/v1/device-models/bulk-upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal upload file.');
+
+                    let msg = `Upload selesai!\n\n`
+                        + `Total baris diproses: ${data.total_baris_diproses}\n`
+                        + `Ditambahkan baru: ${data.ditambahkan_baru}\n`
+                        + `Diaktifkan kembali: ${data.diaktifkan_kembali}\n`
+                        + `Sudah ada (dilewati): ${data.sudah_ada_dilewati}\n`
+                        + `Gagal: ${data.gagal}`;
+                    if (data.gagal > 0) {
+                        msg += `\n\nContoh baris gagal:\n` + data.detail_gagal.slice(0, 5)
+                            .map(e => `- Baris ${e.row}: ${e.reason} (${e.data})`).join('\\n');
+                    }
+                    alert(msg);
+                    renderDeviceModels();
+                } catch(e) {
+                    alert(e.message);
+                } finally {
+                    inputEl.value = ''; // reset supaya bisa upload file yang sama lagi kalau perlu
                 }
             }
 
