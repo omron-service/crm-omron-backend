@@ -172,6 +172,8 @@ class PartCatalog(Base):
     code = Column(String(50), unique=True, index=True, nullable=False)
     name = Column(String(150), nullable=True)
     unit_price = Column(Float, nullable=True, default=0.0)
+    status = Column(String(20), nullable=True, default="Active")  # "Active" atau "Discontinue"
+    model_alat = Column(String(150), nullable=True)  # Model alat terkait sparepart ini (bebas teks)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -205,6 +207,11 @@ class PartStockMovement(Base):
     movement_type = Column(String(30), nullable=False, index=True)
     quantity = Column(Integer, nullable=False)
     note = Column(String(255), nullable=True)
+    # BARU: konteks tambahan sesuai format Excel Terima/Kirim Stok.
+    device_model = Column(String(100), nullable=True)      # "Model Alat" - sparepart ini untuk model alat apa
+    part_status = Column(String(50), nullable=True)        # "Status" - kondisi/status sparepart (bebas isi)
+    related_branch = Column(String(150), nullable=True)    # "Nama Cabang Asal"/"Nama Cabang Tujuan" -
+                                                             # WAJIB diisi utk kirim_ke_cabang & terima_dari_cabang
     performed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
