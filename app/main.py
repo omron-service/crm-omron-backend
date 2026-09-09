@@ -497,6 +497,29 @@ def admin_dashboard_page():
             * { box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
             body { margin: 0; background: #f4f6f9; color: #333; display: flex; height: 100vh; overflow: hidden; }
 
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            .spinner {
+                display: inline-block; width: 16px; height: 16px;
+                border: 3px solid rgba(255,255,255,0.4); border-top-color: #fff;
+                border-radius: 50%; animation: spin 0.7s linear infinite;
+                vertical-align: middle; margin-right: 6px;
+            }
+            .upload-preview-box {
+                background: #fff; border: 1px solid #d0d7e2; border-radius: 8px;
+                padding: 12px 14px; margin-bottom: 15px; display: flex;
+                align-items: center; gap: 12px; flex-wrap: wrap;
+            }
+            .upload-preview-icon { font-size: 22px; }
+            .upload-preview-info { flex: 1; min-width: 180px; }
+            .upload-preview-name { font-weight: bold; color: #222; word-break: break-all; }
+            .upload-preview-meta { font-size: 12px; color: #666; }
+            .upload-result-box {
+                border-radius: 8px; padding: 12px 14px; margin-bottom: 15px; font-size: 13px;
+            }
+            .upload-result-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+            .upload-result-partial { background: #fff3cd; border: 1px solid #ffc107; color: #856404; }
+            .upload-result-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+
             aside { width: 260px; background: #003d80; color: white; display: flex; flex-direction: column; flex-shrink: 0; }
             aside .brand { padding: 20px; font-size: 18px; font-weight: bold; background: #002b5c; border-bottom: 1px solid rgba(255,255,255,0.1); }
             aside ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex: 1; }
@@ -2093,6 +2116,20 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 <input type="file" id="invBulkFileInput-${loc}" accept=".xlsx,.xlsm" style="display:none;" onchange="handleMovementBulkFile('${loc}', this)">
                             </div>
 
+                            <!-- Preview file yang dipilih, sebelum benar-benar diupload -->
+                            <div id="invUploadPreview-${loc}" class="hidden upload-preview-box">
+                                <div class="upload-preview-icon">📄</div>
+                                <div class="upload-preview-info">
+                                    <div class="upload-preview-name" id="invUploadFileName-${loc}"></div>
+                                    <div class="upload-preview-meta" id="invUploadFileMeta-${loc}"></div>
+                                </div>
+                                <button class="btn btn-secondary" id="invUploadCancelBtn-${loc}" onclick="cancelMovementBulkUpload('${loc}')">Batal</button>
+                                <button class="btn btn-success" id="invUploadConfirmBtn-${loc}" onclick="confirmMovementBulkUpload('${loc}')">⬆ Upload</button>
+                            </div>
+
+                            <!-- Hasil upload (muncul setelah proses selesai) -->
+                            <div id="invUploadResult-${loc}" class="hidden upload-result-box"></div>
+
                             <div id="invMovementFormBox-${loc}" class="hidden" style="background:#f8f9fa; border:1px dashed #ccc; padding:10px; border-radius:6px; margin-bottom:15px;">
                                 <div style="font-weight:bold; color:#0056b3; margin-bottom:8px;" id="invMovementTitle-${loc}"></div>
                                 <div class="form-grid">
@@ -2324,20 +2361,59 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 }
             }
 
+            let pendingBulkFile = {}; // { [loc]: File yang dipilih, menunggu konfirmasi }
+
+            function getMovementLabel(loc, type) {
+                const found = INVENTORY_ACTIONS[loc].find(a => a.type === type);
+                return found ? found.label : type;
+            }
+
             function prepareMovementBulkUpload(loc, movementType) {
                 currentMovementType[loc] = movementType;
                 document.getElementById(`invBulkFileInput-${loc}`).click();
             }
 
-            async function handleMovementBulkFile(loc, inputEl) {
+            function handleMovementBulkFile(loc, inputEl) {
                 const file = inputEl.files[0];
                 if (!file) return;
+                pendingBulkFile[loc] = file;
+
+                // File baru dipilih - sembunyikan hasil upload sebelumnya, tampilkan preview.
+                document.getElementById(`invUploadResult-${loc}`).classList.add('hidden');
+
+                const sizeKb = (file.size / 1024).toFixed(1);
+                const ext = (file.name.split('.').pop() || '').toUpperCase();
+                const typeLabel = getMovementLabel(loc, currentMovementType[loc]);
+
+                document.getElementById(`invUploadFileName-${loc}`).innerText = file.name;
+                document.getElementById(`invUploadFileMeta-${loc}`).innerText =
+                    `Tipe file: ${ext} · Ukuran: ${sizeKb} KB · Untuk: ${typeLabel}`;
+                document.getElementById(`invUploadPreview-${loc}`).classList.remove('hidden');
+            }
+
+            function cancelMovementBulkUpload(loc) {
+                pendingBulkFile[loc] = null;
+                document.getElementById(`invBulkFileInput-${loc}`).value = '';
+                document.getElementById(`invUploadPreview-${loc}`).classList.add('hidden');
+            }
+
+            async function confirmMovementBulkUpload(loc) {
+                const file = pendingBulkFile[loc];
+                if (!file) return;
                 const movementType = currentMovementType[loc];
+
+                const confirmBtn = document.getElementById(`invUploadConfirmBtn-${loc}`);
+                const cancelBtn = document.getElementById(`invUploadCancelBtn-${loc}`);
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                confirmBtn.innerHTML = `<span class="spinner"></span> Mengupload...`;
 
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('location', loc);
                 formData.append('movement_type', movementType);
+
+                const resultBox = document.getElementById(`invUploadResult-${loc}`);
 
                 try {
                     const res = await authFetch('/api/v1/inventory-parts/movement/bulk-upload', {
@@ -2346,18 +2422,28 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Gagal upload file.');
 
-                    let msg = `Upload selesai!\n\nTotal baris diproses: ${data.total_baris_diproses}\n`
-                        + `Berhasil: ${data.berhasil}\nGagal: ${data.gagal}`;
+                    const allSuccess = data.gagal === 0;
+                    resultBox.className = 'upload-result-box ' + (allSuccess ? 'upload-result-success' : 'upload-result-partial');
+                    let html = `<strong>${allSuccess ? '✅ Upload berhasil!' : '⚠️ Upload selesai, sebagian baris gagal'}</strong><br>`
+                        + `Total baris diproses: ${data.total_baris_diproses} · Berhasil: ${data.berhasil} · Gagal: ${data.gagal}`;
                     if (data.gagal > 0) {
-                        msg += `\n\nContoh baris gagal:\n` + data.detail_gagal.slice(0, 5)
-                            .map(e => `- Baris ${e.row}: ${e.reason}`).join('\\n');
+                        html += '<ul style="margin:8px 0 0 18px; padding:0;">' +
+                            data.detail_gagal.slice(0, 5).map(e => `<li>Baris ${e.row}: ${esc(e.reason)}</li>`).join('') +
+                            '</ul>';
                     }
-                    alert(msg);
+                    resultBox.innerHTML = html;
+                    resultBox.classList.remove('hidden');
+
+                    cancelMovementBulkUpload(loc); // sembunyikan panel preview, reset input file
                     renderInventoryStock(loc);
                 } catch(e) {
-                    alert(e.message);
+                    resultBox.className = 'upload-result-box upload-result-error';
+                    resultBox.innerHTML = `<strong>❌ Upload gagal.</strong><br>${esc(e.message)}`;
+                    resultBox.classList.remove('hidden');
                 } finally {
-                    inputEl.value = '';
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.innerHTML = '⬆ Upload';
                 }
             }
 
