@@ -21,6 +21,7 @@ def generate_service_report_excel(rows):
     sp2_name, sp2_qty, sp2_code, sp2_price,
     sp3_name, sp3_qty, sp3_code, sp3_price.
     """
+    import io
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
 
