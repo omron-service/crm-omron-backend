@@ -78,6 +78,19 @@ class ServiceTicket(Base):
     payment_method = Column(String(50), nullable=True)      # kanal yang dipilih, mis. VIRTUAL_ACCOUNT_BCA
     payment_url = Column(String(500), nullable=True)        # link halaman pembayaran DOKU
     payment_expired_at = Column(DateTime, nullable=True)    # kapan kode bayar/VA ini kedaluwarsa
+
+    # BARU: Data khusus dokumen Penawaran Harga & Invoice (TIDAK mengubah data
+    # asli tiket - mis. invoice_owner_name terpisah dari customer_name)
+    invoice_owner_name = Column(String(150), nullable=True)  # "Nama Pemilik untuk Invoice"
+    customer_email = Column(String(200), nullable=True)
+    invoice_address = Column(Text, nullable=True)             # alamat khusus dokumen (override customer_address)
+    ppn_free = Column(Boolean, default=False, nullable=False)          # "Bebas PPN"
+    use_manual_price_breakdown = Column(Boolean, default=False, nullable=False)  # toggle "Input Harga Manual"
+    pph23_amount = Column(Float, nullable=True)
+    admin_bank_fee = Column(Float, nullable=True)
+    invoice_number = Column(String(50), nullable=True)    # "098/INV/MD/2026" - dibuat sekali, permanen
+    quotation_number = Column(String(50), nullable=True)  # "067/SPH/MD/2026" - dibuat sekali, permanen
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -85,6 +98,48 @@ class ServiceTicket(Base):
     spareparts = relationship(
         "TicketSparePart", back_populates="ticket", order_by="TicketSparePart.slot_no"
     )
+    billing_items = relationship(
+        "TicketBillingItem", back_populates="ticket", order_by="TicketBillingItem.sequence",
+        cascade="all, delete-orphan",
+    )
+
+
+class TicketBillingItem(Base):
+    """
+    Daftar "Item Layanan" untuk dokumen Penawaran Harga / Invoice - SENGAJA
+    terpisah dari TicketSparePart (yang untuk keperluan servis fisik & stok),
+    supaya satu tiket bisa menagih LEBIH DARI SATU alat sekaligus (mis. Item #1
+    = alat pada tiket ini, Item #2 = alat lain yang referensinya ke tiket lain
+    lewat ref_ticket_number) tanpa mempengaruhi data servis/stok yang sudah ada.
+    """
+    __tablename__ = "ticket_billing_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("service_tickets.id"), nullable=False)
+    sequence = Column(Integer, nullable=False, default=1)  # urutan tampil (1, 2, 3, ...)
+
+    service_type = Column(String(20), default="Perbaikan")  # "Perbaikan" atau "Kalibrasi"
+    product_category = Column(String(50), nullable=True)
+    device_model = Column(String(100), nullable=True)
+    serial_number = Column(String(50), nullable=True)
+    description = Column(Text, nullable=True)  # keluhan/kerusakan, utk baris "Unit ... rusak"
+    quantity = Column(Integer, default=1)
+    price = Column(Float, default=0.0)  # harga satuan
+    ref_ticket_number = Column(String(30), nullable=True)  # diisi kalau item ini menarik data dari tiket lain
+
+    ticket = relationship("ServiceTicket", back_populates="billing_items")
+
+
+class DocumentCounter(Base):
+    """Nomor urut dokumen Invoice/SPH, per jenis dan per tahun (reset tiap tahun baru)."""
+    __tablename__ = "document_counters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    doc_type = Column(String(10), nullable=False)  # "INV" atau "SPH"
+    year = Column(Integer, nullable=False)
+    last_number = Column(Integer, default=0, nullable=False)
+
+    __table_args__ = (UniqueConstraint("doc_type", "year", name="uq_doc_counter_type_year"),)
 
 
 class User(Base):
