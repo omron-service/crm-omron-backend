@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.core.deps import get_current_user, require_department_access, require_role
 from app.models.schema import (
     ServiceTicket, LocationCounter, User, DeviceModelCatalog, TicketSparePart,
-    PartCatalog, PartStock, PartStockMovement,
+    PartCatalog, PartStock, PartStockMovement, TicketBillingItem, DocumentCounter,
 )
 from app.services.service_report_template import generate_ticket_service_report
 
@@ -148,11 +148,31 @@ class TicketPriceUpdate(BaseModel):
     total_price: float
 
 
-class PaymentInfoUpdate(BaseModel):
-    """Dipakai layout edit di Tab Status Payment Service - hanya field terkait
-    pembayaran (NIK/NPWP + Harga Service), BUKAN seluruh 25 field tiket."""
+class BillingItemIn(BaseModel):
+    """Satu baris 'Item Layanan' untuk dokumen Penawaran/Invoice - lihat
+    TicketBillingItem, SENGAJA terpisah dari TicketSparePart."""
+    service_type: str = Field(default="Perbaikan", max_length=20)  # "Perbaikan" atau "Kalibrasi"
+    product_category: Optional[str] = Field(default=None, max_length=50)
+    device_model: Optional[str] = Field(default=None, max_length=100)
+    serial_number: Optional[str] = Field(default=None, max_length=50)
+    description: Optional[str] = None
+    quantity: int = Field(default=1, gt=0)
+    price: float = Field(default=0.0, ge=0)
+    ref_ticket_number: Optional[str] = Field(default=None, max_length=30)
+
+
+class BillingInfoUpdate(BaseModel):
+    """Dipakai layout 'Kelola Pembayaran' di Tab Status Payment Service -
+    field khusus dokumen Penawaran/Invoice, BUKAN seluruh 25 field tiket."""
+    invoice_owner_name: Optional[str] = Field(default=None, max_length=150)
     customer_id_number: Optional[str] = Field(default=None, max_length=30)  # NIK/NPWP
-    total_price: float = Field(..., ge=0)
+    customer_email: Optional[str] = Field(default=None, max_length=200)
+    invoice_address: Optional[str] = None
+    ppn_free: bool = False
+    use_manual_price_breakdown: bool = False
+    pph23_amount: Optional[float] = Field(default=None, ge=0)
+    admin_bank_fee: Optional[float] = Field(default=None, ge=0)
+    items: List[BillingItemIn] = Field(default_factory=list)
 
 
 class GeneratePaymentIn(BaseModel):
@@ -393,7 +413,7 @@ def get_ticket_detail(
     """Dipakai frontend untuk mengisi form Edit Tiket begitu nomor tiket diklik."""
     ticket = (
         db.query(ServiceTicket)
-        .options(joinedload(ServiceTicket.spareparts))
+        .options(joinedload(ServiceTicket.spareparts), joinedload(ServiceTicket.billing_items))
         .filter(ServiceTicket.ticket_number == ticket_number.strip())
         .first()
     )
@@ -539,21 +559,92 @@ def download_ticket_service_report(
 
 # ==================== TAB STATUS PAYMENT SERVICE ====================
 
-@router.put("/tickets/{ticket_number}/payment-info")
-def update_payment_info(
+def _get_or_create_doc_number(db: Session, ticket: ServiceTicket, doc_type: str) -> str:
+    """
+    Nomor dokumen (mis. '098/INV/MD/2026') dibuat SEKALI untuk satu tiket, lalu
+    disimpan permanen - download berkali-kali TIDAK membuat nomor baru.
+    Format: {urutan 3 digit}/{doc_type}/MD/{tahun}, reset urutan tiap tahun baru.
+    """
+    field_name = "invoice_number" if doc_type == "INV" else "quotation_number"
+    existing = getattr(ticket, field_name)
+    if existing:
+        return existing
+
+    year = datetime.utcnow().year
+    counter = (
+        db.query(DocumentCounter)
+        .filter(DocumentCounter.doc_type == doc_type, DocumentCounter.year == year)
+        .with_for_update()
+        .first()
+    )
+    if counter is None:
+        counter = DocumentCounter(doc_type=doc_type, year=year, last_number=0)
+        db.add(counter)
+        db.flush()
+
+    counter.last_number += 1
+    doc_number = f"{counter.last_number:03d}/{doc_type}/MD/{year}"
+    setattr(ticket, field_name, doc_number)
+    return doc_number
+
+
+@router.put("/tickets/{ticket_number}/billing-info")
+def update_billing_info(
     ticket_number: str,
-    data: PaymentInfoUpdate,
+    data: BillingInfoUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update NIK/NPWP dan Harga Service dari layout edit di Tab Status Payment Service."""
-    ticket = db.query(ServiceTicket).filter(ServiceTicket.ticket_number == ticket_number.strip()).first()
+    """
+    Simpan seluruh data 'Kelola Pembayaran': Nama Pemilik utk Invoice, NIK/NPWP,
+    Email, Alamat khusus dokumen, Bebas PPN, PPH23/Admin Bank, dan daftar Item
+    Layanan (bisa lebih dari satu alat). Baris Item Layanan lama dihapus dan
+    diganti baris baru sesuai yang dikirim (data ini murni utk dokumen
+    Penawaran/Invoice, TIDAK menyentuh TicketSparePart/stok sama sekali).
+    """
+    ticket = (
+        db.query(ServiceTicket)
+        .options(joinedload(ServiceTicket.billing_items))
+        .filter(ServiceTicket.ticket_number == ticket_number.strip())
+        .first()
+    )
     if not ticket:
         raise HTTPException(status_code=404, detail="Tiket tidak ditemukan.")
     require_department_access(current_user, ticket.service_type)
 
+    ticket.invoice_owner_name = data.invoice_owner_name
     ticket.customer_id_number = data.customer_id_number
-    ticket.total_price = data.total_price
+    ticket.customer_email = data.customer_email
+    ticket.invoice_address = data.invoice_address
+    ticket.ppn_free = data.ppn_free
+    ticket.use_manual_price_breakdown = data.use_manual_price_breakdown
+    ticket.pph23_amount = data.pph23_amount if data.use_manual_price_breakdown else None
+    ticket.admin_bank_fee = data.admin_bank_fee if data.use_manual_price_breakdown else None
+
+    # Hapus baris Item Layanan lama, ganti dgn yang baru (bukan sparepart tiket
+    # asli - ini murni untuk dokumen, jadi aman diganti seluruhnya tiap simpan).
+    for old_item in list(ticket.billing_items):
+        db.delete(old_item)
+    db.flush()
+
+    for idx, item_in in enumerate(data.items, start=1):
+        db.add(TicketBillingItem(
+            ticket_id=ticket.id,
+            sequence=idx,
+            service_type=item_in.service_type,
+            product_category=item_in.product_category,
+            device_model=item_in.device_model,
+            serial_number=item_in.serial_number,
+            description=item_in.description,
+            quantity=item_in.quantity,
+            price=item_in.price,
+            ref_ticket_number=item_in.ref_ticket_number,
+        ))
+
+    # total_price ikut disinkronkan = jumlah semua item (dipakai di tampilan
+    # tabel daftar Payment & sebagai dasar validasi generate kode bayar).
+    ticket.total_price = sum((i.quantity or 0) * (i.price or 0) for i in data.items)
+
     db.commit()
     db.refresh(ticket)
     return ticket
@@ -565,12 +656,12 @@ def download_quotation_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Download PDF 'Penawaran Harga' untuk satu tiket."""
+    """Download PDF 'Surat Penawaran Harga' untuk satu tiket."""
     from app.services.payment_pdf import generate_quotation_pdf
 
     ticket = (
         db.query(ServiceTicket)
-        .options(joinedload(ServiceTicket.spareparts))
+        .options(joinedload(ServiceTicket.billing_items))
         .filter(ServiceTicket.ticket_number == ticket_number.strip())
         .first()
     )
@@ -578,7 +669,21 @@ def download_quotation_pdf(
         raise HTTPException(status_code=404, detail="Tiket tidak ditemukan.")
     require_department_access(current_user, ticket.service_type)
 
-    pdf_file = generate_quotation_pdf(ticket, ticket.spareparts)
+    items = list(ticket.billing_items)
+    if not items:
+        # Belum pernah isi Item Layanan sama sekali - pakai data tiket sendiri
+        # sbg Item #1, supaya dokumen tetap bisa dibuat.
+        items = [TicketBillingItem(
+            service_type="Perbaikan", product_category=ticket.product_category,
+            device_model=ticket.device_model, serial_number=ticket.serial_number,
+            description=ticket.complaint, quantity=1, price=ticket.total_price or 0,
+        )]
+
+    _get_or_create_doc_number(db, ticket, "SPH")
+    db.commit()
+    db.refresh(ticket)
+
+    pdf_file = generate_quotation_pdf(ticket, items)
     filename = f"Penawaran-{ticket.ticket_number}.pdf"
     return StreamingResponse(
         pdf_file, media_type="application/pdf",
@@ -592,12 +697,12 @@ def download_invoice_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Download PDF 'Invoice Service' untuk satu tiket."""
+    """Download PDF 'INVOICE' untuk satu tiket."""
     from app.services.payment_pdf import generate_invoice_pdf
 
     ticket = (
         db.query(ServiceTicket)
-        .options(joinedload(ServiceTicket.spareparts))
+        .options(joinedload(ServiceTicket.billing_items))
         .filter(ServiceTicket.ticket_number == ticket_number.strip())
         .first()
     )
@@ -605,7 +710,19 @@ def download_invoice_pdf(
         raise HTTPException(status_code=404, detail="Tiket tidak ditemukan.")
     require_department_access(current_user, ticket.service_type)
 
-    pdf_file = generate_invoice_pdf(ticket, ticket.spareparts)
+    items = list(ticket.billing_items)
+    if not items:
+        items = [TicketBillingItem(
+            service_type="Perbaikan", product_category=ticket.product_category,
+            device_model=ticket.device_model, serial_number=ticket.serial_number,
+            description=ticket.complaint, quantity=1, price=ticket.total_price or 0,
+        )]
+
+    _get_or_create_doc_number(db, ticket, "INV")
+    db.commit()
+    db.refresh(ticket)
+
+    pdf_file = generate_invoice_pdf(ticket, items)
     filename = f"Invoice-{ticket.ticket_number}.pdf"
     return StreamingResponse(
         pdf_file, media_type="application/pdf",
