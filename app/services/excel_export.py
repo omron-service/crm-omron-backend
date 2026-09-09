@@ -2,59 +2,90 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from io import BytesIO
 
-def generate_service_report_excel(tickets_data):
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Rekapitulasi Servis"
+def generate_service_report_excel(rows):
+    """
+    Laporan Excel untuk tombol "Download Excel" di menu Data Service
+    (Pusat/Cabang/Pickup Center) - format PERSIS sesuai template yang diberikan
+    (Form_donwload_tiket_service_v1.xlsx), 41 kolom termasuk 3 kolom "NA" yang
+    sengaja dikosongkan (spacer, sesuai template asli).
 
-    header_fill = PatternFill(start_color="0056B3", end_color="0056B3", fill_type="solid")
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    thin_border = Border(
-        left=Side(style='thin', color='CCCCCC'),
-        right=Side(style='thin', color='CCCCCC'),
-        top=Side(style='thin', color='CCCCCC'),
-        bottom=Side(style='thin', color='CCCCCC')
-    )
+    `rows` adalah list of dict, satu dict per tiket, dengan key-key berikut
+    (dibangun di app/main.py dari data ServiceTicket + TicketSparePart):
+    ticket_number, nama_teknisi, received_date, completed_date, customer_name,
+    province, city, customer_address, instansi_name, customer_phone,
+    customer_phone_2, product_category, device_model, serial_number,
+    warranty_period, warranty_status, accessories, complaint,
+    technician_analysis, symptom_code, product_origin, leadtime_days,
+    remarks, status, notes, total_price,
+    sp1_name, sp1_qty, sp1_code, sp1_price,
+    sp2_name, sp2_qty, sp2_code, sp2_price,
+    sp3_name, sp3_qty, sp3_code, sp3_price.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
 
-    headers = [
-        "No. Tiket", "Tanggal Masuk", "Nama Pelanggan", 
-        "No. HP", "Model Perangkat", "Serial Number", 
-        "Status", "Teknisi Penanggung Jawab"
+    HEADERS = [
+        "No. Tiket", "NA", "Nama Teknisi", "Tangal Diterima", "Tanggal Selesai",
+        "Nama Pemilik", "Provinsi", "Kota/ Kabupaten", "Alamat", "Nama Instansi",
+        "No. HP/ Whatsapp 1", "No. HP/ Whatsapp 2", "Produk Kategori", "Model Alat",
+        "Serial No. Alat", "Warranty Period", "Status Garansi", "Aksesoris",
+        "Keluhan Pelanggan", "NA", "Analisa Teknisi", "Symptom", "Asal produk",
+        "Lead Time", "Remarks", "Repair Status", "Catatan", "NA", "Total Price",
+        "Name of Spare Part #1", "Number of Spare Part #1", "Spare Part Code #1", "Price #1",
+        "Name of Spare Part #2", "Number of Spare Part #2", "Spare Part Code #2", "Price #2",
+        "Name of Spare Part #3", "Number of Spare Part #3", "Spare Part Code #3", "Price #3",
     ]
-    
-    ws.append(headers)
 
-    for col_num in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_num)
-        cell.fill = header_fill
+    # Urutan key HARUS PERSIS selaras dengan HEADERS di atas (termasuk 3 kolom
+    # "NA" yang memang sengaja dikosongkan - diberi key unik _na1/_na2/_na3
+    # supaya tidak bentrok satu sama lain di dict Python).
+    FIELD_ORDER = [
+        "ticket_number", "_na1", "nama_teknisi", "received_date", "completed_date",
+        "customer_name", "province", "city", "customer_address", "instansi_name",
+        "customer_phone", "customer_phone_2", "product_category", "device_model",
+        "serial_number", "warranty_period", "warranty_status", "accessories",
+        "complaint", "_na2", "technician_analysis", "symptom_code", "product_origin",
+        "leadtime_days", "remarks", "status", "notes", "_na3", "total_price",
+        "sp1_name", "sp1_qty", "sp1_code", "sp1_price",
+        "sp2_name", "sp2_qty", "sp2_code", "sp2_price",
+        "sp3_name", "sp3_qty", "sp3_code", "sp3_price",
+    ]
+
+    COLUMN_WIDTHS = [12, 4, 16, 13, 13, 18, 13, 15, 22, 16, 15, 15, 14, 14, 14, 13,
+                     14, 16, 25, 4, 20, 12, 13, 9, 22, 14, 20, 4, 12,
+                     18, 12, 14, 10, 18, 12, 14, 10, 18, 12, 14, 10]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Data Service"
+
+    # Landscape + fit-to-width supaya kalau dicetak/di-print-preview tidak
+    # terpotong jadi berhalaman-halaman (41 kolom cukup lebar).
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="0056B3", end_color="0056B3", fill_type="solid")
+    for col_idx, title in enumerate(HEADERS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=title)
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    for row_idx, t in enumerate(tickets_data, start=2):
-        row = [
-            t.get("ticket_number", ""),
-            t.get("created_at", ""),
-            t.get("customer_name", ""),
-            t.get("customer_phone", ""),
-            t.get("device_model", ""),
-            t.get("serial_number", ""),
-            t.get("status", ""),
-            t.get("technician", "Belum Ditugaskan")
-        ]
-        ws.append(row)
-        for col_idx in range(1, len(row) + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.border = thin_border
+    for col_idx, width in enumerate(COLUMN_WIDTHS, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
+    ws.freeze_panes = "A2"
 
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = openpyxl.utils.get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+    for row_data in rows:
+        ws.append([row_data.get(key, "") if not key.startswith("_na") else "" for key in FIELD_ORDER])
 
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
 def generate_inventory_excel(headers, rows, sheet_title="Laporan"):
     """
     FUNGSI BARU - tambahkan ini ke akhir file app/services/excel_export.py Anda.
