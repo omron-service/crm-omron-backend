@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.v1 import mutations, services_api, auth as auth_api, inventory_parts
+from app.api.v1 import mutations, services_api, auth as auth_api, inventory_parts, locations
 from app.api.v1.services_api import _next_ticket_number
 from app.db.session import get_db, init_db
 from app.core.deps import get_current_user, require_department_access
@@ -56,6 +56,8 @@ app.include_router(mutations.router)
 app.include_router(services_api.router)
 app.include_router(services_api.catalog_router)
 app.include_router(inventory_parts.router)
+app.include_router(locations.branch_router)
+app.include_router(locations.pickup_router)
 
 
 @app.get("/")
@@ -587,6 +589,8 @@ def admin_dashboard_page():
                     <ul id="sub-setting" class="submenu">
                         <li><a href="#" onclick="showTab('setting-users')">a. Kelola User</a></li>
                         <li><a href="#" onclick="showTab('setting-devicemodels')">b. Kelola Model Alat</a></li>
+                        <li><a href="#" onclick="showTab('setting-branches')">c. Kelola Cabang</a></li>
+                        <li><a href="#" onclick="showTab('setting-pickupcenters')">d. Kelola Pickup Center</a></li>
                     </ul>
                 </li>
             </ul>
@@ -790,6 +794,84 @@ def admin_dashboard_page():
                         <table style="margin-top:15px;">
                             <thead><tr><th>Kategori</th><th>Nama Model</th><th>Aksi</th></tr></thead>
                             <tbody id="tableDeviceModels"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 4c. KELOLA CABANG (Super Admin) -->
+                <div id="tab-setting-branches" class="tab-content hidden">
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <h2 style="border:none; margin:0;">Kelola Cabang</h2>
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn btn-secondary" onclick="document.getElementById('branchExcelFileInput').click()">📤 Upload dari Excel</button>
+                                <input type="file" id="branchExcelFileInput" accept=".xlsx,.xlsm" style="display:none;" onchange="uploadBranchExcel(this)">
+                                <button class="btn btn-success" onclick="toggleBranchForm()">+ Tambah Cabang</button>
+                            </div>
+                        </div>
+                        <p style="font-size:12px; color:#666;">
+                            <strong>Upload dari Excel:</strong> file .xlsx kolom (Nama Cabang, Kode Store, Handle by, Kota, Alamat).
+                            Kode Store yang sudah ada akan diperbarui datanya; yang belum ada akan ditambahkan. Cabang lama yang tidak disebut di file tidak akan disentuh.
+                        </p>
+
+                        <div id="branchFormBox" class="hidden" style="margin-top:12px; border:1px dashed #ccc; padding:10px; border-radius:6px;">
+                            <div id="branchFormTitle" style="font-weight:bold; color:#0056b3; margin-bottom:8px;">Tambah Cabang Baru</div>
+                            <input type="hidden" id="branchEditingId" value="">
+                            <div class="form-grid">
+                                <div class="form-group"><label>Nama Cabang <span class="required">*</span></label><input id="branchName" placeholder="Contoh: OEC-Medan"></div>
+                                <div class="form-group"><label>Kode Store <span class="required">*</span></label><input id="branchCode" placeholder="Contoh: MDN"></div>
+                                <div class="form-group"><label>Handle by</label><input id="branchHandledBy" placeholder="Contoh: Mitracare"></div>
+                                <div class="form-group"><label>Kota</label><input id="branchCity" placeholder="Contoh: Medan"></div>
+                                <div class="form-group" style="grid-column:1/-1;"><label>Alamat</label><input id="branchAddress" placeholder="Alamat lengkap"></div>
+                            </div>
+                            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                                <button class="btn btn-secondary" onclick="toggleBranchForm()">Batal</button>
+                                <button class="btn btn-success" id="branchSaveBtn" onclick="saveBranch()">Simpan Cabang</button>
+                            </div>
+                        </div>
+
+                        <table style="margin-top:15px;">
+                            <thead><tr><th>Nama Cabang</th><th>Kode</th><th>Handle by</th><th>Kota</th><th>Alamat</th><th>Status</th><th>Aksi</th></tr></thead>
+                            <tbody id="tableBranches"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 4d. KELOLA PICKUP CENTER (Super Admin) -->
+                <div id="tab-setting-pickupcenters" class="tab-content hidden">
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <h2 style="border:none; margin:0;">Kelola Pickup Center</h2>
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn btn-secondary" onclick="document.getElementById('pickupExcelFileInput').click()">📤 Upload dari Excel</button>
+                                <input type="file" id="pickupExcelFileInput" accept=".xlsx,.xlsm" style="display:none;" onchange="uploadPickupExcel(this)">
+                                <button class="btn btn-success" onclick="togglePickupForm()">+ Tambah Pickup Center</button>
+                            </div>
+                        </div>
+                        <p style="font-size:12px; color:#666;">
+                            <strong>Upload dari Excel:</strong> file .xlsx kolom (Store Long Code, Store Name, Store Address, City).
+                            Store Long Code yang sudah ada akan diperbarui datanya; yang belum ada akan ditambahkan. Data lama yang tidak disebut di file tidak akan disentuh.
+                        </p>
+
+                        <div id="pickupFormBox" class="hidden" style="margin-top:12px; border:1px dashed #ccc; padding:10px; border-radius:6px;">
+                            <div id="pickupFormTitle" style="font-weight:bold; color:#0056b3; margin-bottom:8px;">Tambah Pickup Center Baru</div>
+                            <input type="hidden" id="pickupEditingId" value="">
+                            <div class="form-grid">
+                                <div class="form-group"><label>Store Long Code <span class="required">*</span></label><input id="pickupCode" placeholder="Contoh: 0001 - JKJSTT1"></div>
+                                <div class="form-group"><label>Store Name <span class="required">*</span></label><input id="pickupName" placeholder="Contoh: APOTEK ALPRO TEBET TIMUR"></div>
+                                <div class="form-group"><label>City</label><input id="pickupCity" placeholder="Contoh: JAKARTA SELATAN"></div>
+                                <div class="form-group" style="grid-column:1/-1;"><label>Store Address</label><input id="pickupAddress" placeholder="Alamat lengkap"></div>
+                            </div>
+                            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                                <button class="btn btn-secondary" onclick="togglePickupForm()">Batal</button>
+                                <button class="btn btn-success" id="pickupSaveBtn" onclick="savePickupCenter()">Simpan Pickup Center</button>
+                            </div>
+                        </div>
+
+                        <input type="text" id="searchPickupCenters" class="search-input" placeholder="Cari nama/kode/kota..." style="margin-top:10px; width:100%;" onkeyup="filterPickupCenterTable()">
+                        <table style="margin-top:15px;">
+                            <thead><tr><th>Store Long Code</th><th>Store Name</th><th>City</th><th>Store Address</th><th>Status</th><th>Aksi</th></tr></thead>
+                            <tbody id="tablePickupCenters"></tbody>
                         </table>
                     </div>
                 </div>
@@ -1152,6 +1234,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (tabId.startsWith('service-')) hideFormInPage(tabId.replace('service-', ''));
                 if (tabId === 'setting-users') { renderUsers(); return; }
                 if (tabId === 'setting-devicemodels') { renderDeviceModels(); return; }
+                if (tabId === 'setting-branches') { renderBranches(); return; }
+                if (tabId === 'setting-pickupcenters') { renderPickupCenters(); return; }
                 if (tabId.startsWith('inventory-')) { renderInventoryStock(tabId.replace('inventory-', '')); return; }
 
                 renderTableData(tabId);
@@ -1693,6 +1777,249 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderDeviceModels();
                 } catch(e) {
                     alert(e.message);
+                }
+            }
+
+            // ---------- KELOLA CABANG (Super Admin) ----------
+
+            let branchesCache = [];
+
+            function toggleBranchForm() {
+                const box = document.getElementById('branchFormBox');
+                const willShow = box.classList.contains('hidden');
+                box.classList.toggle('hidden');
+                if (willShow) {
+                    document.getElementById('branchEditingId').value = '';
+                    document.getElementById('branchFormTitle').innerText = 'Tambah Cabang Baru';
+                    document.getElementById('branchSaveBtn').innerText = 'Simpan Cabang';
+                    ['branchName','branchCode','branchHandledBy','branchCity','branchAddress'].forEach(id => setVal(id, ''));
+                }
+            }
+
+            function editBranch(id) {
+                const b = branchesCache.find(x => x.id === id);
+                if (!b) return;
+                document.getElementById('branchEditingId').value = id;
+                document.getElementById('branchFormTitle').innerText = `Edit Cabang: ${b.name}`;
+                document.getElementById('branchSaveBtn').innerText = 'Update Cabang';
+                setVal('branchName', b.name || '');
+                setVal('branchCode', b.code || '');
+                setVal('branchHandledBy', b.handled_by || '');
+                setVal('branchCity', b.city || '');
+                setVal('branchAddress', b.address || '');
+                document.getElementById('branchFormBox').classList.remove('hidden');
+            }
+
+            async function saveBranch() {
+                const name = valOf('branchName');
+                const code = valOf('branchCode');
+                if (!name || !code) return alert('Nama Cabang dan Kode Store wajib diisi.');
+
+                const payload = {
+                    name, code,
+                    handled_by: valOf('branchHandledBy') || null,
+                    city: valOf('branchCity') || null,
+                    address: valOf('branchAddress') || null,
+                };
+                const editingId = valOf('branchEditingId');
+                const url = editingId ? `/api/v1/branches/${editingId}` : '/api/v1/branches/';
+                const method = editingId ? 'PUT' : 'POST';
+
+                try {
+                    const res = await authFetch(url, {
+                        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan cabang.');
+                    toggleBranchForm();
+                    renderBranches();
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function renderBranches() {
+                try {
+                    const res = await authFetch('/api/v1/branches/?include_inactive=true');
+                    if (!res.ok) return;
+                    branchesCache = await res.json();
+                    const el = document.getElementById('tableBranches');
+                    el.innerHTML = branchesCache.length ? branchesCache.map(b => `
+                        <tr>
+                            <td>${esc(b.name)}</td>
+                            <td><strong>${esc(b.code)}</strong></td>
+                            <td>${esc(b.handled_by) || '-'}</td>
+                            <td>${esc(b.city) || '-'}</td>
+                            <td style="max-width:280px;">${esc(b.address) || '-'}</td>
+                            <td><span class="badge ${b.is_active ? 'badge-active' : 'badge-inactive'}">${b.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+                            <td style="white-space:nowrap;">
+                                <button class="btn btn-secondary" onclick="editBranch(${b.id})">Edit</button>
+                                ${b.is_active
+                                    ? `<button class="btn btn-danger" onclick="setBranchActive(${b.id}, false)">Nonaktifkan</button>`
+                                    : `<button class="btn btn-success" onclick="setBranchActive(${b.id}, true)">Aktifkan</button>`}
+                            </td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="7" style="text-align:center;">Belum ada data cabang.</td></tr>`;
+                } catch(e) { console.error(e); }
+            }
+
+            async function setBranchActive(id, active) {
+                const endpoint = `/api/v1/branches/${id}/${active ? 'reactivate' : 'deactivate'}`;
+                try {
+                    const res = await authFetch(endpoint, { method: 'PATCH' });
+                    if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Gagal mengubah status.'); }
+                    renderBranches();
+                } catch(e) { alert(e.message); }
+            }
+
+            async function uploadBranchExcel(inputEl) {
+                const file = inputEl.files[0];
+                if (!file) return;
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const res = await authFetch('/api/v1/branches/bulk-upload', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal upload file.');
+                    let msg = `Upload selesai!\\n\\nTotal baris diproses: ${data.total_baris_diproses}\\n`
+                        + `Ditambahkan baru: ${data.ditambahkan_baru}\\nDiperbarui: ${data.diperbarui}\\nGagal: ${data.gagal}`;
+                    if (data.gagal > 0) {
+                        msg += `\\n\\nContoh baris gagal:\\n` + data.detail_gagal.slice(0, 5)
+                            .map(e => `- Baris ${e.row}: ${e.reason}`).join('\\n');
+                    }
+                    alert(msg);
+                    renderBranches();
+                } catch(e) {
+                    alert(e.message);
+                } finally {
+                    inputEl.value = '';
+                }
+            }
+
+            // ---------- KELOLA PICKUP CENTER (Super Admin) ----------
+
+            let pickupCentersCache = [];
+
+            function togglePickupForm() {
+                const box = document.getElementById('pickupFormBox');
+                const willShow = box.classList.contains('hidden');
+                box.classList.toggle('hidden');
+                if (willShow) {
+                    document.getElementById('pickupEditingId').value = '';
+                    document.getElementById('pickupFormTitle').innerText = 'Tambah Pickup Center Baru';
+                    document.getElementById('pickupSaveBtn').innerText = 'Simpan Pickup Center';
+                    ['pickupCode','pickupName','pickupCity','pickupAddress'].forEach(id => setVal(id, ''));
+                }
+            }
+
+            function editPickupCenter(id) {
+                const p = pickupCentersCache.find(x => x.id === id);
+                if (!p) return;
+                document.getElementById('pickupEditingId').value = id;
+                document.getElementById('pickupFormTitle').innerText = `Edit Pickup Center: ${p.store_name}`;
+                document.getElementById('pickupSaveBtn').innerText = 'Update Pickup Center';
+                setVal('pickupCode', p.store_long_code || '');
+                setVal('pickupName', p.store_name || '');
+                setVal('pickupCity', p.city || '');
+                setVal('pickupAddress', p.store_address || '');
+                document.getElementById('pickupFormBox').classList.remove('hidden');
+            }
+
+            async function savePickupCenter() {
+                const code = valOf('pickupCode');
+                const name = valOf('pickupName');
+                if (!code || !name) return alert('Store Long Code dan Store Name wajib diisi.');
+
+                const payload = {
+                    store_long_code: code, store_name: name,
+                    city: valOf('pickupCity') || null,
+                    store_address: valOf('pickupAddress') || null,
+                };
+                const editingId = valOf('pickupEditingId');
+                const url = editingId ? `/api/v1/pickup-centers/${editingId}` : '/api/v1/pickup-centers/';
+                const method = editingId ? 'PUT' : 'POST';
+
+                try {
+                    const res = await authFetch(url, {
+                        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan pickup center.');
+                    togglePickupForm();
+                    renderPickupCenters();
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function renderPickupCenters() {
+                try {
+                    const res = await authFetch('/api/v1/pickup-centers/?include_inactive=true');
+                    if (!res.ok) return;
+                    pickupCentersCache = await res.json();
+                    renderPickupCenterRows(pickupCentersCache);
+                } catch(e) { console.error(e); }
+            }
+
+            function renderPickupCenterRows(list) {
+                const el = document.getElementById('tablePickupCenters');
+                el.innerHTML = list.length ? list.map(p => `
+                    <tr>
+                        <td><strong>${esc(p.store_long_code)}</strong></td>
+                        <td>${esc(p.store_name)}</td>
+                        <td>${esc(p.city) || '-'}</td>
+                        <td style="max-width:280px;">${esc(p.store_address) || '-'}</td>
+                        <td><span class="badge ${p.is_active ? 'badge-active' : 'badge-inactive'}">${p.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-secondary" onclick="editPickupCenter(${p.id})">Edit</button>
+                            ${p.is_active
+                                ? `<button class="btn btn-danger" onclick="setPickupCenterActive(${p.id}, false)">Nonaktifkan</button>`
+                                : `<button class="btn btn-success" onclick="setPickupCenterActive(${p.id}, true)">Aktifkan</button>`}
+                        </td>
+                    </tr>
+                `).join('') : `<tr><td colspan="6" style="text-align:center;">Belum ada data pickup center.</td></tr>`;
+            }
+
+            function filterPickupCenterTable() {
+                const q = valOf('searchPickupCenters').toLowerCase();
+                const filtered = pickupCentersCache.filter(p =>
+                    (p.store_name || '').toLowerCase().includes(q) ||
+                    (p.store_long_code || '').toLowerCase().includes(q) ||
+                    (p.city || '').toLowerCase().includes(q)
+                );
+                renderPickupCenterRows(filtered);
+            }
+
+            async function setPickupCenterActive(id, active) {
+                const endpoint = `/api/v1/pickup-centers/${id}/${active ? 'reactivate' : 'deactivate'}`;
+                try {
+                    const res = await authFetch(endpoint, { method: 'PATCH' });
+                    if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Gagal mengubah status.'); }
+                    renderPickupCenters();
+                } catch(e) { alert(e.message); }
+            }
+
+            async function uploadPickupExcel(inputEl) {
+                const file = inputEl.files[0];
+                if (!file) return;
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const res = await authFetch('/api/v1/pickup-centers/bulk-upload', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal upload file.');
+                    let msg = `Upload selesai!\\n\\nTotal baris diproses: ${data.total_baris_diproses}\\n`
+                        + `Ditambahkan baru: ${data.ditambahkan_baru}\\nDiperbarui: ${data.diperbarui}\\nGagal: ${data.gagal}`;
+                    if (data.gagal > 0) {
+                        msg += `\\n\\nContoh baris gagal:\\n` + data.detail_gagal.slice(0, 5)
+                            .map(e => `- Baris ${e.row}: ${e.reason}`).join('\\n');
+                    }
+                    alert(msg);
+                    renderPickupCenters();
+                } catch(e) {
+                    alert(e.message);
+                } finally {
+                    inputEl.value = '';
                 }
             }
 
