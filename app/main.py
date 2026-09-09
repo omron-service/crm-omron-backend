@@ -2081,6 +2081,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 ],
                 cabang: [
                     { kind: 'stock-list', label: 'Total List Sparepart Cabang' },
+                    { kind: 'movement', movement_type: 'terpakai_cabang', label: 'Total Terpakai di Cabang' },
                     { kind: 'opname', label: 'Hasil Stok Opname Cabang' },
                 ],
             };
