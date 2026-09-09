@@ -1028,7 +1028,7 @@ def admin_dashboard_page():
 const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sabang", "Meulaboh", "Aceh Besar", "Aceh Utara", "Aceh Tengah"], "Sumatera Utara": ["Medan", "Binjai", "Pematangsiantar", "Tebing Tinggi", "Sibolga", "Tanjungbalai", "Padang Sidempuan", "Deli Serdang", "Karo"], "Sumatera Barat": ["Padang", "Bukittinggi", "Padang Panjang", "Payakumbuh", "Sawahlunto", "Solok", "Pariaman", "Agam"], "Riau": ["Pekanbaru", "Dumai", "Kampar", "Bengkalis", "Indragiri Hulu", "Indragiri Hilir", "Rokan Hulu", "Rokan Hilir"], "Kepulauan Riau": ["Batam", "Tanjungpinang", "Bintan", "Karimun", "Natuna", "Lingga"], "Jambi": ["Jambi", "Sungai Penuh", "Batanghari", "Bungo", "Kerinci", "Merangin", "Muaro Jambi"], "Sumatera Selatan": ["Palembang", "Lubuklinggau", "Pagar Alam", "Prabumulih", "Ogan Komering Ilir", "Ogan Komering Ulu", "Musi Banyuasin", "Musi Rawas"], "Bangka Belitung": ["Pangkal Pinang", "Bangka", "Bangka Barat", "Bangka Tengah", "Bangka Selatan", "Belitung", "Belitung Timur"], "Bengkulu": ["Bengkulu", "Rejang Lebong", "Bengkulu Utara", "Bengkulu Selatan", "Kepahiang", "Kaur"], "Lampung": ["Bandar Lampung", "Metro", "Lampung Selatan", "Lampung Tengah", "Lampung Utara", "Lampung Timur", "Tulang Bawang", "Pesawaran"], "DKI Jakarta": ["Jakarta Pusat", "Jakarta Utara", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Kepulauan Seribu"], "Jawa Barat": ["Bandung", "Bekasi", "Bogor", "Depok", "Cimahi", "Sukabumi", "Tasikmalaya", "Cirebon", "Banjar", "Karawang", "Purwakarta", "Subang", "Garut", "Ciamis"], "Banten": ["Serang", "Tangerang", "Tangerang Selatan", "Cilegon", "Pandeglang", "Lebak"], "Jawa Tengah": ["Semarang", "Surakarta", "Salatiga", "Magelang", "Pekalongan", "Tegal", "Purwokerto", "Kudus", "Klaten", "Sukoharjo", "Boyolali", "Sragen", "Cilacap"], "DI Yogyakarta": ["Yogyakarta", "Sleman", "Bantul", "Kulon Progo", "Gunungkidul"], "Jawa Timur": ["Surabaya", "Malang", "Kediri", "Madiun", "Blitar", "Mojokerto", "Pasuruan", "Probolinggo", "Batu", "Sidoarjo", "Gresik", "Jember", "Banyuwangi", "Tuban"], "Bali": ["Denpasar", "Badung", "Gianyar", "Tabanan", "Buleleng", "Karangasem", "Klungkung", "Bangli", "Jembrana"], "Nusa Tenggara Barat": ["Mataram", "Bima", "Lombok Barat", "Lombok Tengah", "Lombok Timur", "Lombok Utara", "Sumbawa", "Dompu"], "Nusa Tenggara Timur": ["Kupang", "Ende", "Maumere", "Manggarai", "Manggarai Barat", "Sumba Timur", "Sumba Barat", "Timor Tengah Selatan"], "Kalimantan Barat": ["Pontianak", "Singkawang", "Sambas", "Kubu Raya", "Ketapang", "Sanggau", "Sintang"], "Kalimantan Tengah": ["Palangka Raya", "Kotawaringin Barat", "Kotawaringin Timur", "Kapuas", "Barito Utara", "Barito Selatan"], "Kalimantan Selatan": ["Banjarmasin", "Banjarbaru", "Banjar", "Barito Kuala", "Tanah Laut", "Hulu Sungai Utara", "Hulu Sungai Selatan"], "Kalimantan Timur": ["Samarinda", "Balikpapan", "Bontang", "Kutai Kartanegara", "Kutai Timur", "Kutai Barat", "Berau", "Paser"], "Kalimantan Utara": ["Tarakan", "Bulungan", "Malinau", "Nunukan", "Tana Tidung"], "Sulawesi Utara": ["Manado", "Bitung", "Tomohon", "Kotamobagu", "Minahasa", "Minahasa Utara", "Minahasa Selatan"], "Gorontalo": ["Gorontalo", "Boalemo", "Bone Bolango", "Gorontalo Utara", "Pohuwato"], "Sulawesi Tengah": ["Palu", "Poso", "Banggai", "Donggala", "Toli-Toli", "Parigi Moutong", "Morowali"], "Sulawesi Barat": ["Mamuju", "Majene", "Polewali Mandar", "Mamasa", "Pasangkayu"], "Sulawesi Selatan": ["Makassar", "Parepare", "Palopo", "Gowa", "Maros", "Bone", "Bulukumba", "Pinrang", "Wajo", "Sidenreng Rappang"], "Sulawesi Tenggara": ["Kendari", "Baubau", "Kolaka", "Konawe", "Muna", "Bombana", "Wakatobi"], "Maluku": ["Ambon", "Tual", "Maluku Tengah", "Maluku Tenggara", "Buru", "Seram Bagian Barat"], "Maluku Utara": ["Ternate", "Tidore Kepulauan", "Halmahera Barat", "Halmahera Utara", "Halmahera Tengah", "Halmahera Selatan"], "Papua": ["Jayapura", "Keerom", "Sarmi", "Biak Numfor", "Jayawijaya", "Nabire", "Mimika", "Merauke"], "Papua Barat": ["Manokwari", "Sorong", "Fakfak", "Kaimana", "Teluk Bintuni", "Teluk Wondama", "Raja Ampat"], "Papua Barat Daya": ["Sorong", "Sorong Selatan", "Tambrauw", "Maybrat", "Raja Ampat"], "Papua Tengah": ["Nabire", "Paniai", "Mimika", "Puncak", "Puncak Jaya", "Dogiyai", "Deiyai"], "Papua Pegunungan": ["Jayawijaya", "Pegunungan Bintang", "Yahukimo", "Tolikara", "Yalimo", "Lanny Jaya", "Nduga"], "Papua Selatan": ["Merauke", "Boven Digoel", "Mappi", "Asmat"]};
 
             function opts(list, selected) {
-                return list.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('');
+                return list.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('\\n');
             }
 
             // ---------- BANGUN TAB DATA SERVICE DARI 1 TEMPLATE (fix bug duplikat id form) ----------
@@ -1643,7 +1643,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                     : `<button class="btn btn-success" onclick="setUserActive(${u.id}, true)">Aktifkan</button>`}
                             </td>
                         </tr>
-                    `).join('');
+                    `).join('\\n');
                 } catch(e) { console.error(e); }
             }
 
@@ -2032,12 +2032,10 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     { type: 'terima_gudang', label: 'Terima dari Gudang' },
                     { type: 'kirim_ke_cabang', label: 'Kirim ke Cabang' },
                     { type: 'terima_dari_cabang', label: 'Terima dari Cabang' },
-                    { type: 'terpakai_pusat', label: 'Terpakai di Pusat' },
                 ],
                 cabang: [
                     { type: 'terima_dari_pusat', label: 'Terima dari Pusat' },
                     { type: 'kirim_balik_ke_pusat', label: 'Kirim Balik ke Pusat' },
-                    { type: 'terpakai_cabang', label: 'Terpakai di Cabang' },
                 ],
             };
 
@@ -2050,7 +2048,6 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 ],
                 cabang: [
                     { kind: 'stock-list', label: 'Total List Sparepart Cabang' },
-                    { kind: 'movement', movement_type: 'terpakai_cabang', label: 'Total Terpakai di Cabang' },
                     { kind: 'opname', label: 'Hasil Stok Opname Cabang' },
                 ],
             };
@@ -2063,10 +2060,13 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     const root = document.getElementById(`tab-inventory-${loc}`);
                     const actionButtons = INVENTORY_ACTIONS[loc]
                         .map(a => `<button class="btn btn-success" onclick="openMovementForm('${loc}','${a.type}','${a.label}')">+ ${a.label}</button>`)
-                        .join(' ');
+                        .join('\\n');
                     const reportOptions = INVENTORY_REPORTS[loc]
                         .map((r, idx) => `<option value="${idx}">${r.label}</option>`)
-                        .join('');
+                        .join('\\n');
+                    const bulkUploadOptions = INVENTORY_ACTIONS[loc]
+                        .map(a => `<option value="${a.type}">${a.label} (Excel)</option>`)
+                        .join('\\n');
 
                     root.innerHTML = `
                         <div class="card">
@@ -2080,6 +2080,16 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                     ${actionButtons}
                                     <button class="btn btn-warning" onclick="toggleOpnameForm('${loc}')">+ Stok Opname</button>
                                 </div>
+                            </div>
+
+                            <div style="display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:#f8f9fa; padding:10px; border-radius:6px;">
+                                <span style="font-size:12px; color:#666; margin-right:auto;">Update banyak sparepart sekaligus lewat Excel:</span>
+                                <button class="btn btn-secondary" onclick="downloadMovementTemplate()">📄 Contoh Format Excel</button>
+                                <select onchange="if(this.value !== ''){ prepareMovementBulkUpload('${loc}', this.value); this.selectedIndex = 0; }">
+                                    <option value="">📤 Upload Massal Excel ▾</option>
+                                    ${bulkUploadOptions}
+                                </select>
+                                <input type="file" id="invBulkFileInput-${loc}" accept=".xlsx,.xlsm" style="display:none;" onchange="handleMovementBulkFile('${loc}', this)">
                             </div>
 
                             <div id="invMovementFormBox-${loc}" class="hidden" style="background:#f8f9fa; border:1px dashed #ccc; padding:10px; border-radius:6px; margin-bottom:15px;">
@@ -2241,6 +2251,61 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     const a = document.createElement('a');
                     a.href = dlUrl;
                     a.download = `${report.label.replace(/ /g, '_')}_${loc}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(dlUrl);
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            function prepareMovementBulkUpload(loc, movementType) {
+                currentMovementType[loc] = movementType;
+                document.getElementById(`invBulkFileInput-${loc}`).click();
+            }
+
+            async function handleMovementBulkFile(loc, inputEl) {
+                const file = inputEl.files[0];
+                if (!file) return;
+                const movementType = currentMovementType[loc];
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('location', loc);
+                formData.append('movement_type', movementType);
+
+                try {
+                    const res = await authFetch('/api/v1/inventory-parts/movement/bulk-upload', {
+                        method: 'POST', body: formData
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal upload file.');
+
+                    let msg = `Upload selesai!\n\nTotal baris diproses: ${data.total_baris_diproses}\n`
+                        + `Berhasil: ${data.berhasil}\nGagal: ${data.gagal}`;
+                    if (data.gagal > 0) {
+                        msg += `\n\nContoh baris gagal:\n` + data.detail_gagal.slice(0, 5)
+                            .map(e => `- Baris ${e.row}: ${e.reason}`).join('\\n');
+                    }
+                    alert(msg);
+                    renderInventoryStock(loc);
+                } catch(e) {
+                    alert(e.message);
+                } finally {
+                    inputEl.value = '';
+                }
+            }
+
+            async function downloadMovementTemplate() {
+                try {
+                    const res = await authFetch('/api/v1/inventory-parts/movement/template');
+                    if (!res.ok) throw new Error('Gagal mengunduh contoh format.');
+                    const blob = await res.blob();
+                    const dlUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = dlUrl;
+                    a.download = 'Contoh_Format_Upload_Stok.xlsx';
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
