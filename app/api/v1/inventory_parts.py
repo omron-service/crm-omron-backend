@@ -64,6 +64,17 @@ BRANCH_REQUIRED_TYPES = {"kirim_ke_cabang", "terima_dari_cabang"}
 # Nilai "Status" sparepart yang valid (sesuai keputusan bisnis).
 VALID_PART_STATUS = {"active", "discontinue"}
 
+# PENTING - PASANGAN PERGERAKAN DUA ARAH:
+# "Kirim ke Cabang" dan "Terima dari Cabang" di sisi PUSAT adalah PERPINDAHAN
+# barang antar lokasi, BUKAN cuma catatan sepihak. Jadi begitu Pusat mengirim
+# ke Cabang, stok Pusat berkurang DAN stok Cabang otomatis bertambah (dan
+# sebaliknya untuk terima dari cabang) - dicatat sebagai satu transaksi yang
+# sama, bukan dua entri manual terpisah yang rawan lupa/selisih.
+MIRROR_MOVEMENT_TYPE = {
+    "kirim_ke_cabang": "terima_dari_pusat",      # Pusat -1 -> Cabang +1 (otomatis)
+    "terima_dari_cabang": "kirim_balik_ke_pusat",  # Pusat +1 -> Cabang -1 (otomatis)
+}
+
 
 class MovementIn(BaseModel):
     location: str
@@ -215,6 +226,34 @@ def _apply_single_movement(
     if device_model and device_model.strip():
         part.model_alat = device_model.strip()
 
+    # ---- PENTING: cerminkan otomatis ke stok Cabang untuk pasangan pergerakan ----
+    # "Kirim ke Cabang" dan "Terima dari Cabang" adalah PERPINDAHAN barang antar
+    # lokasi (bukan cuma catatan sepihak di Pusat) - jadi stok Cabang HARUS ikut
+    # berubah dalam transaksi yang SAMA, supaya tidak ada kejadian "stok Pusat
+    # berkurang tapi stok Cabang tidak bertambah" seperti yang dilaporkan.
+    mirror_type = MIRROR_MOVEMENT_TYPE.get(movement_type)
+    if mirror_type and loc == "pusat":
+        mirror_direction = MOVEMENT_RULES["cabang"][mirror_type]
+        mirror_stock = _get_or_create_stock_row(db, part.id, "cabang")
+        mirror_new_quantity = mirror_stock.quantity + (mirror_direction * quantity)
+        if mirror_new_quantity < 0:
+            raise ValueError(
+                f"Stok Cabang tidak mencukupi untuk '{part.code}' pada pergerakan pasangan "
+                f"'{MOVEMENT_LABELS.get(mirror_type, mirror_type)}'. Stok Cabang saat ini "
+                f"{mirror_stock.quantity}, tidak bisa mengurangi {quantity}."
+            )
+        mirror_stock.quantity = mirror_new_quantity
+        db.add(PartStockMovement(
+            part_id=part.id, location="cabang", movement_type=mirror_type,
+            quantity=quantity,
+            note=(f"Otomatis - pasangan dari '{MOVEMENT_LABELS.get(movement_type, movement_type)}' di Pusat"
+                  + (f" ({note})" if note else "")),
+            performed_by_user_id=user_id,
+            device_model=device_model.strip() if device_model else None,
+            part_status=normalized_status,
+            related_branch=related_branch.strip() if related_branch else None,
+        ))
+
     return part, stock
 
 
@@ -358,10 +397,13 @@ def bulk_upload_movements(
         note = _cell(row, 6)             # Catatan
 
         try:
-            _apply_single_movement(
-                db, loc, movement_type, code, name, quantity, note, current_user.id,
-                device_model=device_model, part_status=part_status, related_branch=related_branch,
-            )
+            with db.begin_nested():  # SAVEPOINT per baris - kalau gagal, HANYA baris ini
+                                       # yang dibatalkan, baris lain yang sudah berhasil
+                                       # sebelumnya di batch yang sama tetap aman.
+                _apply_single_movement(
+                    db, loc, movement_type, code, name, quantity, note, current_user.id,
+                    device_model=device_model, part_status=part_status, related_branch=related_branch,
+                )
             berhasil += 1
         except ValueError as e:
             errors.append({"row": idx, "reason": str(e)})
