@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.v1 import mutations, services_api, auth as auth_api, inventory_parts, locations
 from app.api.v1.services_api import _next_ticket_number
@@ -113,7 +113,10 @@ def download_excel_report(
     login (tidak lagi publik), serta staff hanya bisa unduh data
     departemennya sendiri.
     """
-    query = db.query(ServiceTicket)
+    query = db.query(ServiceTicket).options(
+        joinedload(ServiceTicket.spareparts),
+        joinedload(ServiceTicket.created_by),
+    )
 
     if service_type:
         srv = service_type.lower().strip()
@@ -124,19 +127,53 @@ def download_excel_report(
 
     tickets = query.order_by(ServiceTicket.id).all()
 
-    rows = [
-        {
+    def _fmt_date(d):
+        return d.strftime("%Y-%m-%d") if d else ""
+
+    def _sp(ticket, slot_no):
+        """Ambil baris sparepart slot ke-N (1/2/3) dari sebuah tiket, kalau ada."""
+        for sp in ticket.spareparts:
+            if sp.slot_no == slot_no:
+                return sp
+        return None
+
+    rows = []
+    for t in tickets:
+        sp1, sp2, sp3 = _sp(t, 1), _sp(t, 2), _sp(t, 3)
+        rows.append({
             "ticket_number": t.ticket_number,
-            "created_at": t.created_at.strftime("%Y-%m-%d") if t.created_at else "-",
+            "nama_teknisi": t.created_by.full_name if t.created_by else "",
+            "received_date": _fmt_date(t.received_date),
+            "completed_date": _fmt_date(t.completed_date),
             "customer_name": t.customer_name,
-            "customer_phone": t.customer_phone,
-            "device_model": t.device_model,
-            "serial_number": t.serial_number or "-",
-            "status": t.status or "Diproses",
-            "technician": t.technician_analysis or "-",
-        }
-        for t in tickets
-    ]
+            "province": t.province or "",
+            "city": t.city or "",
+            "customer_address": t.customer_address or "",
+            "instansi_name": t.instansi_name or "",
+            "customer_phone": t.customer_phone or "",
+            "customer_phone_2": t.customer_phone_2 or "",
+            "product_category": t.product_category or "",
+            "device_model": t.device_model or "",
+            "serial_number": t.serial_number or "",
+            "warranty_period": t.warranty_period or "",
+            "warranty_status": t.warranty_status or "",
+            "accessories": t.accessories or "",
+            "complaint": t.complaint or "",
+            "technician_analysis": t.technician_analysis or "",
+            "symptom_code": t.symptom_code or "",
+            "product_origin": t.product_origin or "",
+            "leadtime_days": t.leadtime_days if t.leadtime_days is not None else "",
+            "remarks": t.remarks or "",
+            "status": t.status or "",
+            "notes": t.notes or "",
+            "total_price": t.total_price if t.total_price is not None else 0,
+            "sp1_name": sp1.name if sp1 else "", "sp1_qty": sp1.quantity if sp1 else "",
+            "sp1_code": sp1.code if sp1 else "", "sp1_price": sp1.price if sp1 else "",
+            "sp2_name": sp2.name if sp2 else "", "sp2_qty": sp2.quantity if sp2 else "",
+            "sp2_code": sp2.code if sp2 else "", "sp2_price": sp2.price if sp2 else "",
+            "sp3_name": sp3.name if sp3 else "", "sp3_qty": sp3.quantity if sp3 else "",
+            "sp3_code": sp3.code if sp3 else "", "sp3_price": sp3.price if sp3 else "",
+        })
 
     excel_file = generate_service_report_excel(rows)
     label = service_type or (current_user.department if current_user.role != "superadmin" else "semua")
