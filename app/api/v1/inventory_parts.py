@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.db.session import get_db
-from app.core.deps import get_current_user, require_department_access, require_role
+from app.core.deps import get_current_user, require_department_access
 from app.models.schema import PartCatalog, PartStock, PartStockMovement, PartStockOpname, User, BranchCatalog
 from app.services.excel_export import generate_inventory_excel
 
@@ -467,32 +467,6 @@ def bulk_upload_movements(
         "detail_gagal": errors[:50],
     }
 
-
-@router.post("/reset-stock-testing")
-def reset_stock_for_testing(
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_role("superadmin")),
-):
-    """
-    TOMBOL SEMENTARA UNTUK TESTING - mengembalikan jumlah stok (Jumlah Stok) di
-    SEMUA sparepart, di KEDUA lokasi (Pusat dan Cabang), jadi 0.
-
-    SENGAJA TIDAK menghapus apa pun yang lain:
-    - Katalog sparepart (kode, nama, Status, Model Alat) TETAP ADA - jadi
-      upload/kirim berikutnya tidak perlu mengetik ulang data sparepart.
-    - Riwayat pergerakan stok (PartStockMovement) dan riwayat stok opname
-      TETAP TERSIMPAN sebagai jejak audit permanen (sesuai aturan sistem ini
-      sejak awal - tidak pernah menghapus riwayat).
-
-    CATATAN: karena riwayat pergerakan TIDAK ikut direset, kalau tombol ini
-    dipakai berkali-kali untuk testing di database yang sama dengan data
-    produksi, laporan "Total Kirim ke Cabang" dkk akan ikut memuat baris-baris
-    hasil testing tsb. Kalau perlu riwayat testing juga dibersihkan, beri tahu
-    saya - itu perubahan terpisah karena sifatnya menghapus data permanen.
-    """
-    updated = db.query(PartStock).update({PartStock.quantity: 0})
-    db.commit()
-    return {"status": "success", "jumlah_baris_direset": updated}
 
 
 @router.post("/opname")
