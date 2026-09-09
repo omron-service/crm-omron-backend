@@ -730,40 +730,10 @@ def admin_dashboard_page():
                 <div id="tab-service-cabang" class="tab-content hidden"></div>
                 <div id="tab-service-pickup" class="tab-content hidden"></div>
 
-                <!-- 3. STATUS PAYMENT SERVICE -->
-                <div id="tab-payment-pusat" class="tab-content hidden">
-                    <div class="card">
-                        <h2>3a. Status Payment Service - Pusat (Out of Warranty)</h2>
-                        <table>
-                            <thead>
-                                <tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr>
-                            </thead>
-                            <tbody id="tablePaymentPusat"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div id="tab-payment-cabang" class="tab-content hidden">
-                    <div class="card">
-                        <h2>3b. Status Payment Service - Cabang (Out of Warranty)</h2>
-                        <table>
-                            <thead>
-                                <tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr>
-                            </thead>
-                            <tbody id="tablePaymentCabang"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div id="tab-payment-pickup" class="tab-content hidden">
-                    <div class="card">
-                        <h2>3c. Status Payment Service - Pickup Center (Out of Warranty)</h2>
-                        <table>
-                            <thead>
-                                <tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr>
-                            </thead>
-                            <tbody id="tablePaymentPickup"></tbody>
-                        </table>
-                    </div>
-                </div>
+                <!-- 3. STATUS PAYMENT SERVICE (dibangun dari 1 template JS, lihat buildPaymentTabsHTML) -->
+                <div id="tab-payment-pusat" class="tab-content hidden"></div>
+                <div id="tab-payment-cabang" class="tab-content hidden"></div>
+                <div id="tab-payment-pickup" class="tab-content hidden"></div>
 
                 <!-- 4. INVENTORY PART (dibangun dari 1 template JS, lihat buildInventoryTabsHTML) -->
                 <div id="tab-inventory-pusat" class="tab-content hidden"></div>
@@ -953,6 +923,7 @@ def admin_dashboard_page():
             window.onload = async function() {
                 buildServiceTabsHTML();
                 buildInventoryTabsHTML();
+                buildPaymentTabsHTML();
                 if (authToken) {
                     await enterDashboard();
                 } else {
@@ -1353,13 +1324,14 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
             }
 
             function populatePaymentRows(menu, data) {
+                const loc = menu.replace('payment-', '');
                 const filtered = data.filter(d => !d.warranty_status || d.warranty_status === 'Out of Warranty');
-                const targetEl = menu === 'payment-pusat' ? 'tablePaymentPusat' : (menu === 'payment-cabang' ? 'tablePaymentCabang' : 'tablePaymentPickup');
-                const el = document.getElementById(targetEl);
+                paymentRowsCache[loc] = filtered;
+                const el = document.getElementById(`tablePayment-${loc}`);
                 if (!el) return;
                 el.innerHTML = filtered.length ? filtered.map(d => `
                     <tr>
-                        <td><strong>${esc(d.ticket_number)}</strong></td>
+                        <td><a href="#" onclick="openPaymentDetail('${esc(d.ticket_number)}', '${loc}'); return false;" style="font-weight:bold; text-decoration:underline; color:#0056b3; cursor:pointer;" title="Klik untuk kelola pembayaran">${esc(d.ticket_number)}</a></td>
                         <td>${esc(d.customer_name)}</td>
                         <td>${esc(d.device_model)}</td>
                         <td>Rp ${(d.total_price || 0).toLocaleString('id-ID')}</td>
@@ -2214,6 +2186,224 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                         </div>
                     `;
                 });
+            }
+
+            // ---------- TAB 3: STATUS PAYMENT SERVICE ----------
+
+            const PAYMENT_METHOD_OPTIONS = [
+                { value: 'ONLINE_TO_OFFLINE_ALFA', label: 'Alfamart' },
+                { value: 'ONLINE_TO_OFFLINE_INDOMARET', label: 'Indomaret' },
+                { value: 'VIRTUAL_ACCOUNT_BRI', label: 'VA BRI' },
+                { value: 'VIRTUAL_ACCOUNT_BCA', label: 'VA BCA' },
+                { value: 'VIRTUAL_ACCOUNT_BNI', label: 'VA BNI' },
+                { value: 'VIRTUAL_ACCOUNT_PERMATA', label: 'VA Permata' },
+                { value: 'VIRTUAL_ACCOUNT_BANK_MANDIRI', label: 'VA Mandiri' },
+            ];
+
+            let paymentRowsCache = {};   // { [loc]: [...tiket Out of Warranty di lokasi ini] }
+            let currentPaymentTicket = {}; // { [loc]: "JKT-2600001" | null }
+
+            function buildPaymentTabsHTML() {
+                const PAYMENT_LOCATION_LABELS = { pusat: 'Pusat', cabang: 'Cabang', pickup: 'Pickup Center' };
+                Object.keys(PAYMENT_LOCATION_LABELS).forEach(loc => {
+                    const label = PAYMENT_LOCATION_LABELS[loc];
+                    const root = document.getElementById(`tab-payment-${loc}`);
+                    const methodOptions = PAYMENT_METHOD_OPTIONS
+                        .map(m => `<option value="${m.value}">${m.label}</option>`).join('');
+
+                    root.innerHTML = `
+                        <div id="view-table-payment-${loc}">
+                            <div class="card">
+                                <h2>Status Payment Service - ${label} (Out of Warranty)</h2>
+                                <table>
+                                    <thead><tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr></thead>
+                                    <tbody id="tablePayment-${loc}"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div id="view-detail-payment-${loc}" class="hidden">
+                            <div class="card">
+                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                    <h2 id="pdTitle-${loc}" style="margin:0; border:none;">Kelola Pembayaran</h2>
+                                    <button class="btn btn-secondary" onclick="closePaymentDetail('${loc}')">&larr; Kembali ke Daftar</button>
+                                </div>
+
+                                <div class="form-grid" style="margin-top:10px;">
+                                    <div><label style="font-weight:bold; color:#666;">Nama Pemilik</label><div id="pdCustomerName-${loc}" style="padding:8px 0;"></div></div>
+                                    <div><label style="font-weight:bold; color:#666;">Model Alat</label><div id="pdDeviceModel-${loc}" style="padding:8px 0;"></div></div>
+                                    <div><label style="font-weight:bold; color:#666;">No. HP/WA</label><div id="pdPhone-${loc}" style="padding:8px 0;"></div></div>
+                                    <div><label style="font-weight:bold; color:#666;">Status Garansi</label><div id="pdWarranty-${loc}" style="padding:8px 0;"></div></div>
+                                </div>
+
+                                <hr style="margin:15px 0; border:none; border-top:1px solid #eee;">
+
+                                <div class="form-grid">
+                                    <div class="form-group"><label>NIK / NPWP Pelanggan</label><input id="pdIdNumber-${loc}" placeholder="Opsional"></div>
+                                    <div class="form-group"><label>Harga Service (Rp) <span class="required">*</span></label><input type="number" min="0" id="pdTotalPrice-${loc}"></div>
+                                </div>
+                                <button class="btn btn-success" onclick="savePaymentInfo('${loc}')">💾 Simpan Info Pembayaran</button>
+
+                                <hr style="margin:15px 0; border:none; border-top:1px solid #eee;">
+
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn btn-secondary" onclick="downloadQuotationPdf('${loc}')">📄 Download Penawaran Harga (PDF)</button>
+                                    <button class="btn btn-secondary" onclick="downloadInvoicePdf('${loc}')">🧾 Download Invoice Service (PDF)</button>
+                                </div>
+
+                                <hr style="margin:15px 0; border:none; border-top:1px solid #eee;">
+
+                                <h3 style="margin-bottom:8px;">Generate Kode Bayar (Virtual Account)</h3>
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>Pilih Metode Pembayaran</label>
+                                        <select id="pdPaymentMethod-${loc}">
+                                            <option value="">-- Pilih Metode --</option>
+                                            ${methodOptions}
+                                        </select>
+                                    </div>
+                                </div>
+                                <button class="btn btn-warning" onclick="generatePaymentCode('${loc}')" id="pdGenerateBtn-${loc}">💳 Generate Kode Bayar</button>
+
+                                <div id="pdPaymentResult-${loc}" class="hidden upload-result-box" style="margin-top:12px;"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            async function openPaymentDetail(ticketNumber, loc) {
+                try {
+                    const res = await authFetch(`/api/v1/db/tickets/detail/${encodeURIComponent(ticketNumber)}`);
+                    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Gagal memuat data tiket.'); }
+                    const t = await res.json();
+
+                    currentPaymentTicket[loc] = ticketNumber;
+                    document.getElementById(`pdTitle-${loc}`).innerText = `Kelola Pembayaran - ${ticketNumber}`;
+                    document.getElementById(`pdCustomerName-${loc}`).innerText = t.customer_name || '-';
+                    document.getElementById(`pdDeviceModel-${loc}`).innerText = t.device_model || '-';
+                    document.getElementById(`pdPhone-${loc}`).innerText = t.customer_phone || '-';
+                    document.getElementById(`pdWarranty-${loc}`).innerText = t.warranty_status || '-';
+                    setVal(`pdIdNumber-${loc}`, t.customer_id_number || '');
+                    setVal(`pdTotalPrice-${loc}`, t.total_price || '');
+                    setVal(`pdPaymentMethod-${loc}`, t.payment_method || '');
+
+                    const resultBox = document.getElementById(`pdPaymentResult-${loc}`);
+                    if (t.payment_url) {
+                        resultBox.className = 'upload-result-box upload-result-success';
+                        resultBox.innerHTML = `<strong>Kode bayar sudah pernah dibuat.</strong><br>`
+                            + `Metode: ${esc(getMethodLabel(t.payment_method))}<br>`
+                            + `Link: <a href="${esc(t.payment_url)}" target="_blank" rel="noopener">${esc(t.payment_url)}</a>`
+                            + (t.payment_expired_at ? `<br>Berlaku sampai: ${new Date(t.payment_expired_at).toLocaleString('id-ID')}` : '');
+                        resultBox.classList.remove('hidden');
+                    } else {
+                        resultBox.classList.add('hidden');
+                    }
+
+                    document.getElementById(`view-table-payment-${loc}`).classList.add('hidden');
+                    document.getElementById(`view-detail-payment-${loc}`).classList.remove('hidden');
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            function getMethodLabel(value) {
+                const found = PAYMENT_METHOD_OPTIONS.find(m => m.value === value);
+                return found ? found.label : (value || '-');
+            }
+
+            function closePaymentDetail(loc) {
+                currentPaymentTicket[loc] = null;
+                document.getElementById(`view-detail-payment-${loc}`).classList.add('hidden');
+                document.getElementById(`view-table-payment-${loc}`).classList.remove('hidden');
+                renderTableData('payment-' + loc);
+            }
+
+            async function savePaymentInfo(loc) {
+                const ticketNumber = currentPaymentTicket[loc];
+                if (!ticketNumber) return;
+                const totalPrice = valOf(`pdTotalPrice-${loc}`);
+                if (totalPrice === '') return alert('Harga Service wajib diisi.');
+
+                try {
+                    const res = await authFetch(`/api/v1/db/tickets/${encodeURIComponent(ticketNumber)}/payment-info`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            customer_id_number: valOf(`pdIdNumber-${loc}`) || null,
+                            total_price: parseFloat(totalPrice),
+                        }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan info pembayaran.');
+                    alert('Info pembayaran berhasil disimpan.');
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            async function _downloadPdf(url, filename) {
+                try {
+                    const res = await authFetch(url);
+                    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Gagal mengunduh PDF.'); }
+                    const blob = await res.blob();
+                    const dlUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = dlUrl; a.download = filename;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    window.URL.revokeObjectURL(dlUrl);
+                } catch(e) {
+                    alert(e.message);
+                }
+            }
+
+            function downloadQuotationPdf(loc) {
+                const ticketNumber = currentPaymentTicket[loc];
+                if (!ticketNumber) return;
+                _downloadPdf(`/api/v1/db/tickets/${encodeURIComponent(ticketNumber)}/quotation-pdf`, `Penawaran-${ticketNumber}.pdf`);
+            }
+
+            function downloadInvoicePdf(loc) {
+                const ticketNumber = currentPaymentTicket[loc];
+                if (!ticketNumber) return;
+                _downloadPdf(`/api/v1/db/tickets/${encodeURIComponent(ticketNumber)}/invoice-pdf`, `Invoice-${ticketNumber}.pdf`);
+            }
+
+            async function generatePaymentCode(loc) {
+                const ticketNumber = currentPaymentTicket[loc];
+                if (!ticketNumber) return;
+                const method = valOf(`pdPaymentMethod-${loc}`);
+                if (!method) return alert('Pilih metode pembayaran dulu.');
+
+                const btn = document.getElementById(`pdGenerateBtn-${loc}`);
+                const resultBox = document.getElementById(`pdPaymentResult-${loc}`);
+                btn.disabled = true;
+                btn.innerHTML = `<span class="spinner"></span> Memproses...`;
+
+                try {
+                    const res = await authFetch(`/api/v1/db/tickets/${encodeURIComponent(ticketNumber)}/generate-payment`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ payment_method: method }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal generate kode bayar.');
+
+                    resultBox.className = 'upload-result-box upload-result-success';
+                    resultBox.innerHTML = `<strong>✅ Kode bayar berhasil dibuat!</strong> (mode: ${esc(data.environment)})<br>`
+                        + `Metode: ${esc(getMethodLabel(data.payment_method))}<br>`
+                        + `Link pembayaran: <a href="${esc(data.payment_url)}" target="_blank" rel="noopener">${esc(data.payment_url)}</a>`
+                        + (data.expired_at ? `<br>Berlaku sampai: ${new Date(data.expired_at).toLocaleString('id-ID')}` : '');
+                    resultBox.classList.remove('hidden');
+                    renderTableData('payment-' + loc);
+                } catch(e) {
+                    resultBox.className = 'upload-result-box upload-result-error';
+                    resultBox.innerHTML = `<strong>❌ Gagal generate kode bayar.</strong><br>${esc(e.message)}`;
+                    resultBox.classList.remove('hidden');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '💳 Generate Kode Bayar';
+                }
             }
 
             // Jenis pergerakan yang butuh dropdown Cabang, dan label yang sesuai
