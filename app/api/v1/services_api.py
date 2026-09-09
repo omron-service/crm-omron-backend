@@ -45,8 +45,8 @@ REPAIR_STATUS_OPTIONS = ("Diterima", "Diproses", "Selesai/Dikirim", "Selesai Dia
 class SparePartLine(BaseModel):
     name: Optional[str] = None
     # gt=0: sengaja tidak boleh nol/negatif - kalau boleh negatif, nilai ini
-    # bisa dipakai memanipulasi stok Pusat supaya BERTAMBAH (lihat
-    # _apply_pusat_stock_change: stock.quantity -= signed_quantity).
+    # bisa dipakai memanipulasi stok Inventory Part supaya BERTAMBAH (lihat
+    # _apply_ticket_stock_change: stock.quantity -= signed_quantity).
     quantity: Optional[int] = Field(default=None, gt=0)
     code: Optional[str] = None
     price: Optional[float] = Field(default=None, ge=0)
@@ -207,26 +207,33 @@ def _next_ticket_number(db: Session, srv_type: str) -> str:
     return f"{prefix_full}{counter.last_number:05d}"
 
 
-def _apply_pusat_stock_change(
+STOCK_LOCATION_BY_SERVICE_TYPE = {"pusat": "pusat", "cabang": "cabang", "pickup": "pusat"}
+USAGE_LABEL_BY_SERVICE_TYPE = {"pusat": "Pusat", "cabang": "Cabang", "pickup": "Pickup Center"}
+
+
+def _apply_ticket_stock_change(
     db: Session, code: str, name: Optional[str], signed_quantity: int,
-    ticket_number: str, user_id: Optional[int],
+    location: str, ticket_number: str, usage_label: str, user_id: Optional[int],
 ):
     """
-    ATURAN BISNIS: Pickup Center adalah drop-off point untuk tim Pusat (bukan
-    lokasi inventory tersendiri). Jadi setiap sparepart yang dipakai untuk
-    tiket service_type='pickup' memotong stok PUSAT.
+    Memotong/mengembalikan stok Inventory Part LOKASI TERTENTU saat sparepart
+    dipakai/diedit di sebuah tiket servis. Berlaku untuk KETIGA jenis tiket:
+    - Tiket Pusat   -> memotong stok PUSAT (location="pusat")
+    - Tiket Cabang  -> memotong stok CABANG (location="cabang")
+    - Tiket Pickup Center -> memotong stok PUSAT juga (location="pusat"),
+      karena Pickup Center adalah drop-off point untuk tim Pusat, BUKAN
+      lokasi inventory tersendiri.
 
-    signed_quantity POSITIF = dipakai (stok Pusat berkurang), dicatat sebagai
-    movement_type='terpakai_pusat' - ikut terhitung di laporan "Total Terpakai
-    di Pusat".
-    signed_quantity NEGATIF = dikembalikan (stok Pusat bertambah lagi) - dipakai
-    saat tiket pickup DIEDIT dan jumlah/kode sparepart-nya dikurangi/dihapus.
-    Dicatat sebagai movement_type='koreksi_edit_tiket_pickup' (jenis terpisah,
-    supaya TIDAK ikut menggelembungkan laporan "Total Terpakai").
+    signed_quantity POSITIF = dipakai (stok berkurang), dicatat movement_type
+    'terpakai_{location}' - ikut terhitung di laporan "Total Terpakai".
+    signed_quantity NEGATIF = dikembalikan (stok bertambah lagi) - dipakai
+    saat tiket DIEDIT dan jumlah/kode sparepart-nya dikurangi/dihapus/diganti,
+    dicatat movement_type 'koreksi_edit_tiket_{location}' (terpisah, supaya
+    TIDAK ikut menggelembungkan laporan "Total Terpakai").
 
-    Sengaja TIDAK memblokir kalau stok Pusat tidak mencukupi - servis ke
-    pelanggan tetap harus tercatat; kalau stok jadi minus, itu jadi sinyal
-    untuk restock, dicatat jelas di kolom catatan movement-nya.
+    Sengaja TIDAK memblokir kalau stok tidak mencukupi - servis ke pelanggan
+    tetap harus tercatat; kalau stok jadi minus, itu jadi sinyal untuk
+    restock, dicatat jelas di kolom catatan movement-nya.
     """
     if not code:
         return
@@ -244,29 +251,29 @@ def _apply_pusat_stock_change(
 
     stock = (
         db.query(PartStock)
-        .filter(PartStock.part_id == part.id, PartStock.location == "pusat")
+        .filter(PartStock.part_id == part.id, PartStock.location == location)
         .with_for_update()
         .first()
     )
     if stock is None:
-        stock = PartStock(part_id=part.id, location="pusat", quantity=0)
+        stock = PartStock(part_id=part.id, location=location, quantity=0)
         db.add(stock)
         db.flush()
 
     stock.quantity -= signed_quantity
 
     if signed_quantity > 0:
-        movement_type = "terpakai_pusat"
-        note = f"Otomatis: dipakai untuk tiket Pickup Center {ticket_number}"
+        movement_type = f"terpakai_{location}"
+        note = f"Otomatis: dipakai untuk tiket {usage_label} {ticket_number}"
         if stock.quantity < 0:
-            note += f" (PERINGATAN: stok Pusat kurang {-stock.quantity})"
+            note += f" (PERINGATAN: stok {location.capitalize()} kurang {-stock.quantity})"
     else:
-        movement_type = "koreksi_edit_tiket_pickup"
-        note = f"Otomatis: dikembalikan krn edit tiket Pickup Center {ticket_number}"
+        movement_type = f"koreksi_edit_tiket_{location}"
+        note = f"Otomatis: dikembalikan krn edit tiket {usage_label} {ticket_number}"
 
     db.add(PartStockMovement(
         part_id=part.id,
-        location="pusat",
+        location=location,
         movement_type=movement_type,
         quantity=abs(signed_quantity),
         note=note,
@@ -388,11 +395,14 @@ def create_ticket(
                     price=sp.price,
                 ))
 
-                # Pickup Center = drop-off point utk tim Pusat, jadi sparepart yang
-                # dipakai di tiket pickup memotong stok PUSAT (bukan stok tersendiri).
-                if srv_type == "pickup" and sp.code and sp.quantity:
-                    _apply_pusat_stock_change(
-                        db, sp.code, sp.name, sp.quantity, ticket_num, current_user.id
+                # Sparepart yang dipakai di tiket ini memotong stok Inventory
+                # Part di lokasi yang sesuai (Pusat/Cabang/Pusat-untuk-Pickup) -
+                # lihat STOCK_LOCATION_BY_SERVICE_TYPE & _apply_ticket_stock_change.
+                stock_loc = STOCK_LOCATION_BY_SERVICE_TYPE.get(srv_type)
+                if stock_loc and sp.code and sp.quantity:
+                    _apply_ticket_stock_change(
+                        db, sp.code, sp.name, sp.quantity, stock_loc,
+                        ticket_num, USAGE_LABEL_BY_SERVICE_TYPE[srv_type], current_user.id,
                     )
 
         db.commit()
@@ -478,13 +488,17 @@ def update_ticket(
 
         # ---- Sparepart: upsert per slot (1-3). Baris TIDAK PERNAH dihapus dari
         # tabel - kalau slot dikosongkan, field-nya di-null-kan saja, row-nya tetap
-        # ada. Kalau tiket ini Pickup Center, stok Pusat disesuaikan: jumlah lama
-        # dikembalikan dulu, baru jumlah baru dipotong - supaya stok selalu akurat
-        # walau kode/jumlah sparepart-nya diganti-ganti lewat edit berkali-kali. ----
+        # ada. Stok Inventory Part di lokasi yang sesuai (Pusat/Cabang) disesuaikan:
+        # jumlah lama dikembalikan dulu, baru jumlah baru dipotong - supaya stok
+        # selalu akurat walau kode/jumlah sparepart-nya diganti-ganti lewat edit
+        # berkali-kali. Berlaku utk KETIGA jenis tiket (Pusat/Cabang/Pickup). ----
         existing_by_slot = {sp.slot_no: sp for sp in ticket.spareparts}
         incoming = list(data.spareparts or [])[:3]
         while len(incoming) < 3:
             incoming.append(SparePartLine())
+
+        stock_loc = STOCK_LOCATION_BY_SERVICE_TYPE.get(ticket.service_type)
+        usage_label = USAGE_LABEL_BY_SERVICE_TYPE.get(ticket.service_type, ticket.service_type)
 
         for idx, new_line in enumerate(incoming, start=1):
             old = existing_by_slot.get(idx)
@@ -492,15 +506,16 @@ def update_ticket(
             old_qty = (old.quantity or 0) if old else 0
             has_new_data = any([new_line.name, new_line.quantity, new_line.code, new_line.price])
 
-            if ticket.service_type == "pickup":
+            if stock_loc:
                 if old_code and old_qty:
-                    _apply_pusat_stock_change(
-                        db, old_code, None, -old_qty, ticket.ticket_number, current_user.id
+                    _apply_ticket_stock_change(
+                        db, old_code, None, -old_qty, stock_loc,
+                        ticket.ticket_number, usage_label, current_user.id,
                     )
                 if has_new_data and new_line.code and new_line.quantity:
-                    _apply_pusat_stock_change(
-                        db, new_line.code, new_line.name, new_line.quantity,
-                        ticket.ticket_number, current_user.id,
+                    _apply_ticket_stock_change(
+                        db, new_line.code, new_line.name, new_line.quantity, stock_loc,
+                        ticket.ticket_number, usage_label, current_user.id,
                     )
 
             if has_new_data:

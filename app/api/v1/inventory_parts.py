@@ -43,7 +43,7 @@ MOVEMENT_RULES = {
 # meski tidak lagi bisa dibuat manual (datanya otomatis dari tiket Pickup Center).
 REPORTABLE_MOVEMENT_TYPES = {
     "pusat": {**MOVEMENT_RULES["pusat"], "terpakai_pusat": -1},
-    "cabang": dict(MOVEMENT_RULES["cabang"]),
+    "cabang": {**MOVEMENT_RULES["cabang"], "terpakai_cabang": -1},
 }
 
 MOVEMENT_LABELS = {
