@@ -2084,7 +2084,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                             <div style="display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:#f8f9fa; padding:10px; border-radius:6px;">
                                 <span style="font-size:12px; color:#666; margin-right:auto;">Update banyak sparepart sekaligus lewat Excel:</span>
-                                <button class="btn btn-secondary" onclick="downloadMovementTemplate()">📄 Contoh Format Excel</button>
+                                <button class="btn btn-secondary" onclick="downloadMovementTemplate('terima')">📄 Contoh Format Terima</button>
+                                <button class="btn btn-secondary" onclick="downloadMovementTemplate('kirim')">📄 Contoh Format Kirim</button>
                                 <select onchange="if(this.value !== ''){ prepareMovementBulkUpload('${loc}', this.value); this.selectedIndex = 0; }">
                                     <option value="">📤 Upload Massal Excel ▾</option>
                                     ${bulkUploadOptions}
@@ -2095,9 +2096,21 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                             <div id="invMovementFormBox-${loc}" class="hidden" style="background:#f8f9fa; border:1px dashed #ccc; padding:10px; border-radius:6px; margin-bottom:15px;">
                                 <div style="font-weight:bold; color:#0056b3; margin-bottom:8px;" id="invMovementTitle-${loc}"></div>
                                 <div class="form-grid">
-                                    <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invCode-${loc}" placeholder="Kode/part number"></div>
                                     <div class="form-group"><label>Nama Sparepart</label><input id="invName-${loc}" placeholder="Nama sparepart"></div>
+                                    <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invCode-${loc}" placeholder="Kode/part number"></div>
+                                    <div class="form-group"><label>Status</label>
+                                        <select id="invStatus-${loc}">
+                                            <option value="">-- Opsional --</option>
+                                            <option value="Active">Active</option>
+                                            <option value="Discontinue">Discontinue</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group"><label>Model Alat</label><input id="invDeviceModel-${loc}" placeholder="Opsional, mis. HEM-7120"></div>
                                     <div class="form-group"><label>Jumlah <span class="required">*</span></label><input type="number" min="1" id="invQty-${loc}"></div>
+                                    <div class="form-group hidden" id="invBranchWrap-${loc}">
+                                        <label id="invBranchLabel-${loc}">Cabang</label>
+                                        <select id="invBranch-${loc}"><option value="">-- Pilih Cabang --</option></select>
+                                    </div>
                                     <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invNote-${loc}" placeholder="Opsional"></div>
                                 </div>
                                 <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -2121,7 +2134,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                             </div>
 
                             <table>
-                                <thead><tr><th>Kode</th><th>Nama Sparepart</th><th>Jumlah Stok</th><th>Harga Satuan</th><th>Update Terakhir</th></tr></thead>
+                                <thead><tr><th>Kode</th><th>Nama Sparepart</th><th>Model Alat</th><th>Status</th><th>Jumlah Stok</th><th>Harga Satuan</th><th>Update Terakhir</th></tr></thead>
                                 <tbody id="tableInventory-${loc}"></tbody>
                             </table>
                         </div>
@@ -2129,15 +2142,54 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 });
             }
 
-            function openMovementForm(loc, type, label) {
+            // Jenis pergerakan yang butuh dropdown Cabang, dan label yang sesuai
+            // ("Cabang Tujuan" untuk kirim, "Cabang Asal" untuk terima).
+            const BRANCH_FIELD_CONFIG = {
+                kirim_ke_cabang: 'Cabang Tujuan',
+                terima_dari_cabang: 'Cabang Asal',
+            };
+            let branchListCache = null;
+
+            async function openMovementForm(loc, type, label) {
                 document.getElementById(`invOpnameFormBox-${loc}`).classList.add('hidden');
                 currentMovementType[loc] = type;
                 document.getElementById(`invMovementTitle-${loc}`).innerText = label;
                 setVal(`invCode-${loc}`, '');
                 setVal(`invName-${loc}`, '');
+                setVal(`invStatus-${loc}`, '');
+                setVal(`invDeviceModel-${loc}`, '');
                 setVal(`invQty-${loc}`, '');
                 setVal(`invNote-${loc}`, '');
+
+                const branchWrap = document.getElementById(`invBranchWrap-${loc}`);
+                const branchFieldLabel = BRANCH_FIELD_CONFIG[type];
+                if (branchFieldLabel) {
+                    document.getElementById(`invBranchLabel-${loc}`).innerHTML =
+                        `${branchFieldLabel} <span class="required">*</span>`;
+                    branchWrap.classList.remove('hidden');
+                    await populateBranchSelect(loc);
+                } else {
+                    branchWrap.classList.add('hidden');
+                    setVal(`invBranch-${loc}`, '');
+                }
+
                 document.getElementById(`invMovementFormBox-${loc}`).classList.remove('hidden');
+            }
+
+            async function populateBranchSelect(loc) {
+                const select = document.getElementById(`invBranch-${loc}`);
+                select.innerHTML = '<option value="">Memuat...</option>';
+                try {
+                    if (!branchListCache) {
+                        const res = await authFetch('/api/v1/branches/');
+                        branchListCache = res.ok ? await res.json() : [];
+                    }
+                    select.innerHTML = branchListCache.length
+                        ? '<option value="">-- Pilih Cabang --</option>' + branchListCache.map(b => `<option value="${esc(b.name)}">${esc(b.name)} (${esc(b.code)})</option>`).join('')
+                        : '<option value="">(Belum ada data cabang - tambah di Kelola Cabang)</option>';
+                } catch(e) {
+                    select.innerHTML = '<option value="">Gagal memuat daftar cabang</option>';
+                }
             }
 
             function closeMovementForm(loc) {
@@ -2161,13 +2213,23 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const qty = valOf(`invQty-${loc}`);
                 if (!code || !qty) return alert('Kode Sparepart dan Jumlah wajib diisi.');
 
+                const movementType = currentMovementType[loc];
+                const branchFieldLabel = BRANCH_FIELD_CONFIG[movementType];
+                const relatedBranch = valOf(`invBranch-${loc}`);
+                if (branchFieldLabel && !relatedBranch) {
+                    return alert(`${branchFieldLabel} wajib dipilih untuk pergerakan ini.`);
+                }
+
                 const payload = {
                     location: loc,
-                    movement_type: currentMovementType[loc],
+                    movement_type: movementType,
                     code: code,
                     name: valOf(`invName-${loc}`) || null,
                     quantity: parseInt(qty),
                     note: valOf(`invNote-${loc}`) || null,
+                    device_model: valOf(`invDeviceModel-${loc}`) || null,
+                    part_status: valOf(`invStatus-${loc}`) || null,
+                    related_branch: relatedBranch || null,
                 };
 
                 try {
@@ -2225,11 +2287,13 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                         <tr>
                             <td><strong>${esc(d.code)}</strong></td>
                             <td>${esc(d.name) || '-'}</td>
+                            <td>${esc(d.model_alat) || '-'}</td>
+                            <td>${d.status ? `<span class="badge ${d.status === 'Active' ? 'badge-active' : 'badge-inactive'}">${esc(d.status)}</span>` : '-'}</td>
                             <td>${d.quantity}</td>
                             <td>Rp ${(d.unit_price || 0).toLocaleString('id-ID')}</td>
                             <td>${d.updated_at ? d.updated_at.split('T')[0] : '-'}</td>
                         </tr>
-                    `).join('') : `<tr><td colspan="5" style="text-align:center;">Belum ada sparepart di lokasi ini</td></tr>`;
+                    `).join('') : `<tr><td colspan="7" style="text-align:center;">Belum ada sparepart di lokasi ini</td></tr>`;
                 } catch(e) { console.error(e); }
             }
 
@@ -2297,15 +2361,15 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 }
             }
 
-            async function downloadMovementTemplate() {
+            async function downloadMovementTemplate(kind) {
                 try {
-                    const res = await authFetch('/api/v1/inventory-parts/movement/template');
+                    const res = await authFetch(`/api/v1/inventory-parts/movement/template?kind=${kind}`);
                     if (!res.ok) throw new Error('Gagal mengunduh contoh format.');
                     const blob = await res.blob();
                     const dlUrl = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = dlUrl;
-                    a.download = 'Contoh_Format_Upload_Stok.xlsx';
+                    a.download = kind === 'kirim' ? 'Contoh_Format_Upload_Kirim_Stok.xlsx' : 'Contoh_Format_Upload_Terima_Stok.xlsx';
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
