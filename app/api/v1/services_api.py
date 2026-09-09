@@ -148,6 +148,17 @@ class TicketPriceUpdate(BaseModel):
     total_price: float
 
 
+class PaymentInfoUpdate(BaseModel):
+    """Dipakai layout edit di Tab Status Payment Service - hanya field terkait
+    pembayaran (NIK/NPWP + Harga Service), BUKAN seluruh 25 field tiket."""
+    customer_id_number: Optional[str] = Field(default=None, max_length=30)  # NIK/NPWP
+    total_price: float = Field(..., ge=0)
+
+
+class GeneratePaymentIn(BaseModel):
+    payment_method: str  # mis. "VIRTUAL_ACCOUNT_BCA" - lihat doku_payment.PAYMENT_METHOD_LABELS
+
+
 class DeviceModelCreateIn(BaseModel):
     category: str
     model_name: str
@@ -524,6 +535,141 @@ def download_ticket_service_report(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+# ==================== TAB STATUS PAYMENT SERVICE ====================
+
+@router.put("/tickets/{ticket_number}/payment-info")
+def update_payment_info(
+    ticket_number: str,
+    data: PaymentInfoUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update NIK/NPWP dan Harga Service dari layout edit di Tab Status Payment Service."""
+    ticket = db.query(ServiceTicket).filter(ServiceTicket.ticket_number == ticket_number.strip()).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Tiket tidak ditemukan.")
+    require_department_access(current_user, ticket.service_type)
+
+    ticket.customer_id_number = data.customer_id_number
+    ticket.total_price = data.total_price
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
+@router.get("/tickets/{ticket_number}/quotation-pdf")
+def download_quotation_pdf(
+    ticket_number: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download PDF 'Penawaran Harga' untuk satu tiket."""
+    from app.services.payment_pdf import generate_quotation_pdf
+
+    ticket = (
+        db.query(ServiceTicket)
+        .options(joinedload(ServiceTicket.spareparts))
+        .filter(ServiceTicket.ticket_number == ticket_number.strip())
+        .first()
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Tiket tidak ditemukan.")
+    require_department_access(current_user, ticket.service_type)
+
+    pdf_file = generate_quotation_pdf(ticket, ticket.spareparts)
+    filename = f"Penawaran-{ticket.ticket_number}.pdf"
+    return StreamingResponse(
+        pdf_file, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/tickets/{ticket_number}/invoice-pdf")
+def download_invoice_pdf(
+    ticket_number: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download PDF 'Invoice Service' untuk satu tiket."""
+    from app.services.payment_pdf import generate_invoice_pdf
+
+    ticket = (
+        db.query(ServiceTicket)
+        .options(joinedload(ServiceTicket.spareparts))
+        .filter(ServiceTicket.ticket_number == ticket_number.strip())
+        .first()
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Tiket tidak ditemukan.")
+    require_department_access(current_user, ticket.service_type)
+
+    pdf_file = generate_invoice_pdf(ticket, ticket.spareparts)
+    filename = f"Invoice-{ticket.ticket_number}.pdf"
+    return StreamingResponse(
+        pdf_file, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.post("/tickets/{ticket_number}/generate-payment")
+def generate_payment_code(
+    ticket_number: str,
+    data: GeneratePaymentIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate kode bayar / link Virtual Account lewat DOKU Checkout untuk satu
+    tiket. Butuh DOKU_CLIENT_ID & DOKU_SECRET_KEY sudah diatur di server -
+    kalau belum, akan menolak dengan pesan jelas (bukan pura-pura berhasil).
+    """
+    from app.services.doku_payment import create_payment_code, DokuConfigError, DokuApiError
+
+    ticket = db.query(ServiceTicket).filter(ServiceTicket.ticket_number == ticket_number.strip()).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Tiket tidak ditemukan.")
+    require_department_access(current_user, ticket.service_type)
+
+    if not ticket.total_price or ticket.total_price <= 0:
+        raise HTTPException(status_code=400, detail="Isi & simpan Harga Service (harus lebih dari 0) sebelum generate kode bayar.")
+
+    try:
+        result = create_payment_code(
+            invoice_number=ticket.ticket_number,
+            amount=ticket.total_price,
+            payment_method=data.payment_method,
+            customer_name=ticket.customer_name,
+            customer_phone=ticket.customer_phone,
+        )
+    except DokuConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except DokuApiError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    ticket.payment_method = data.payment_method
+    ticket.payment_url = result["payment_url"]
+    ticket.payment_code = result.get("token_id")
+    # expired_date DOKU formatnya "yyyyMMddHHmmss" dalam WIB (UTC+7)
+    raw = result.get("expired_date_raw")
+    if raw:
+        try:
+            ticket.payment_expired_at = datetime.strptime(raw, "%Y%m%d%H%M%S")
+        except ValueError:
+            pass
+    db.commit()
+    db.refresh(ticket)
+
+    return {
+        "status": "success",
+        "payment_url": ticket.payment_url,
+        "payment_method": ticket.payment_method,
+        "expired_at": ticket.payment_expired_at.isoformat() if ticket.payment_expired_at else None,
+        "environment": result.get("environment"),
+    }
 
 
 @router.post("/tickets/update-price")
