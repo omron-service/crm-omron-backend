@@ -2102,7 +2102,6 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                     </select>
                                     ${actionButtons}
                                     <button class="btn btn-warning" onclick="toggleOpnameForm('${loc}')">+ Stok Opname</button>
-                                    <button class="btn btn-danger" onclick="resetStockForTesting()" title="SEMENTARA untuk testing - mengembalikan semua Jumlah Stok (Pusat & Cabang) ke 0. Katalog sparepart & riwayat pergerakan tidak ikut terhapus.">🔄 Reset Stok (Testing)</button>
                                 </div>
                             </div>
 
@@ -2310,30 +2309,6 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     alert(`Stok Opname tersimpan.\\nStok sistem sebelumnya: ${data.system_quantity}\\nHasil hitung fisik: ${data.counted_quantity}\\nSelisih: ${data.difference}`);
                     toggleOpnameForm(loc);
                     renderInventoryStock(loc);
-                } catch(e) {
-                    alert(e.message);
-                }
-            }
-
-            async function resetStockForTesting() {
-                const step1 = confirm(
-                    '⚠️ PERINGATAN\\n\\n' +
-                    'Ini akan mengembalikan JUMLAH STOK semua sparepart (Pusat DAN Cabang) menjadi 0.\\n\\n' +
-                    'Katalog sparepart (kode/nama/Status/Model Alat) dan riwayat pergerakan TIDAK ikut ' +
-                    'terhapus - hanya angka stoknya saja yang di-nol-kan.\\n\\n' +
-                    'Tombol ini untuk TESTING SEMENTARA. Lanjutkan?'
-                );
-                if (!step1) return;
-                const step2 = confirm('Konfirmasi sekali lagi: SEMUA angka Jumlah Stok akan jadi 0 dan tidak bisa dibatalkan. Yakin lanjut?');
-                if (!step2) return;
-
-                try {
-                    const res = await authFetch('/api/v1/inventory-parts/reset-stock-testing', { method: 'POST' });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || 'Gagal reset stok.');
-                    alert(`Berhasil! ${data.jumlah_baris_direset} baris Jumlah Stok direset ke 0 (Pusat & Cabang).`);
-                    renderInventoryStock('pusat');
-                    renderInventoryStock('cabang');
                 } catch(e) {
                     alert(e.message);
                 }
