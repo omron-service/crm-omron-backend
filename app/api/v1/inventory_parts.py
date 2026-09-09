@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.db.session import get_db
 from app.core.deps import get_current_user, require_department_access
-from app.models.schema import PartCatalog, PartStock, PartStockMovement, PartStockOpname, User
+from app.models.schema import PartCatalog, PartStock, PartStockMovement, PartStockOpname, User, BranchCatalog
 from app.services.excel_export import generate_inventory_excel
 
 logger = logging.getLogger("uvicorn.error")
@@ -56,6 +56,14 @@ MOVEMENT_LABELS = {
     "terpakai_cabang": "Terpakai di Cabang",
 }
 
+# Jenis pergerakan yang WAJIB menyertakan nama Cabang (asal/tujuan) - karena
+# sekarang ada banyak cabang (lihat menu Kelola Cabang), jadi harus jelas
+# cabang MANA yang jadi asal/tujuan pengiriman part, bukan cuma "cabang" secara umum.
+BRANCH_REQUIRED_TYPES = {"kirim_ke_cabang", "terima_dari_cabang"}
+
+# Nilai "Status" sparepart yang valid (sesuai keputusan bisnis).
+VALID_PART_STATUS = {"active", "discontinue"}
+
 
 class MovementIn(BaseModel):
     location: str
@@ -64,6 +72,9 @@ class MovementIn(BaseModel):
     name: Optional[str] = None
     quantity: int = Field(..., gt=0)
     note: Optional[str] = None
+    device_model: Optional[str] = None       # "Model Alat"
+    part_status: Optional[str] = None        # "Status"
+    related_branch: Optional[str] = None     # "Nama Cabang Asal"/"Nama Cabang Tujuan"
 
 
 class OpnameIn(BaseModel):
@@ -123,6 +134,8 @@ def get_stock_list(
             "code": part.code,
             "name": part.name,
             "unit_price": part.unit_price,
+            "status": part.status,
+            "model_alat": part.model_alat,
             "quantity": stock.quantity,
             "updated_at": stock.updated_at,
         }
@@ -130,7 +143,11 @@ def get_stock_list(
     ]
 
 
-def _apply_single_movement(db: Session, loc: str, movement_type: str, code: str, name: Optional[str], quantity: int, note: Optional[str], user_id: int):
+def _apply_single_movement(
+    db: Session, loc: str, movement_type: str, code: str, name: Optional[str], quantity: int,
+    note: Optional[str], user_id: int,
+    device_model: Optional[str] = None, part_status: Optional[str] = None, related_branch: Optional[str] = None,
+):
     """
     Logika inti SATU baris pergerakan stok - dipakai bersama oleh endpoint
     manual (/movement) MAUPUN upload massal Excel (/movement/bulk-upload),
@@ -148,6 +165,29 @@ def _apply_single_movement(db: Session, loc: str, movement_type: str, code: str,
     if not quantity or quantity <= 0:
         raise ValueError("Jumlah harus lebih dari 0.")
 
+    if part_status and part_status.strip().lower() not in VALID_PART_STATUS:
+        raise ValueError(f"Status '{part_status}' tidak valid. Harus 'Active' atau 'Discontinue'.")
+
+    if movement_type in BRANCH_REQUIRED_TYPES:
+        if not (related_branch and related_branch.strip()):
+            label = "Cabang Tujuan" if movement_type == "kirim_ke_cabang" else "Cabang Asal"
+            raise ValueError(f"{label} wajib diisi untuk pergerakan '{MOVEMENT_LABELS.get(movement_type, movement_type)}'.")
+
+        # Nama cabang WAJIB cocok dengan daftar aktif di menu Kelola Cabang -
+        # mencegah salah ketik nama cabang (mis. "Mendan" vs "Medan") yang
+        # kalau dibiarkan bebas teks akan sulit dilacak & direkap nanti.
+        branch_match = (
+            db.query(BranchCatalog)
+            .filter(BranchCatalog.name.ilike(related_branch.strip()), BranchCatalog.is_active.is_(True))
+            .first()
+        )
+        if not branch_match:
+            raise ValueError(
+                f"Nama cabang '{related_branch}' tidak ditemukan di daftar Kelola Cabang (atau sedang nonaktif). "
+                f"Pastikan nama cabang persis sama dengan yang terdaftar."
+            )
+        related_branch = branch_match.name  # normalisasi ke ejaan resmi yang terdaftar
+
     direction = allowed[movement_type]
     part = _get_or_create_part(db, code.strip(), name)
     stock = _get_or_create_stock_row(db, part.id, loc)
@@ -157,10 +197,24 @@ def _apply_single_movement(db: Session, loc: str, movement_type: str, code: str,
         raise ValueError(f"Stok tidak mencukupi untuk '{part.code}'. Stok saat ini {stock.quantity}, tidak bisa mengurangi {quantity}.")
 
     stock.quantity = new_quantity
+    normalized_status = None
+    if part_status and part_status.strip():
+        normalized_status = "Active" if part_status.strip().lower() == "active" else "Discontinue"
+
     db.add(PartStockMovement(
         part_id=part.id, location=loc, movement_type=movement_type,
         quantity=quantity, note=note, performed_by_user_id=user_id,
+        device_model=device_model.strip() if device_model else None,
+        part_status=normalized_status,
+        related_branch=related_branch.strip() if related_branch else None,
     ))
+    # Status & Model Alat juga dicatat sebagai atribut terkini di katalog sparepart
+    # (bukan cuma di riwayat pergerakan), supaya bisa dilihat langsung di tabel stok.
+    if normalized_status:
+        part.status = normalized_status
+    if device_model and device_model.strip():
+        part.model_alat = device_model.strip()
+
     return part, stock
 
 
@@ -177,7 +231,8 @@ def create_movement(
 
     try:
         part, stock = _apply_single_movement(
-            db, loc, data.movement_type, data.code, data.name, data.quantity, data.note, current_user.id
+            db, loc, data.movement_type, data.code, data.name, data.quantity, data.note, current_user.id,
+            device_model=data.device_model, part_status=data.part_status, related_branch=data.related_branch,
         )
         db.commit()
         return {
@@ -199,24 +254,38 @@ def create_movement(
 
 @router.get("/movement/template")
 def download_movement_template(
+    kind: str = "terima",
     current_user: User = Depends(get_current_user),
 ):
     """
-    Contoh format Excel untuk upload massal pergerakan stok (Terima dari
-    Gudang / Kirim ke Cabang / Terima dari Cabang / Terima dari Pusat / Kirim
-    Balik ke Pusat - kolomnya sama persis untuk semua jenis, cuma jenis
-    pergerakannya dipilih terpisah saat upload, bukan dari isi file).
+    Contoh format Excel untuk upload massal pergerakan stok - file ASLI yang
+    diberikan (bukan digenerate ulang), disimpan di app/assets/. Ada 2 versi:
+    - kind=terima -> dipakai utk Terima dari Gudang / Terima dari Cabang / Terima dari Pusat
+    - kind=kirim  -> dipakai utk Kirim ke Cabang / Kirim Balik ke Pusat
     """
-    headers = ["Kode Sparepart", "Nama Sparepart", "Jumlah", "Catatan"]
-    example_rows = [
-        ["LCD-01", "LCD Panel HEM-7120", 10, "Contoh baris - boleh dihapus"],
-        ["SNS-02", "Sensor Suhu", 5, ""],
-    ]
-    excel_file = generate_inventory_excel(headers, example_rows, "Contoh Format")
+    import os
+    filename_map = {
+        "terima": ("Contoh_Format_Upload_Terima_Stok.xlsx", "Contoh_Format_Upload_Terima_Stok.xlsx"),
+        "kirim": ("Contoh_Format_Upload_Kirim_Stok.xlsx", "Contoh_Format_Upload_Kirim_Stok.xlsx"),
+    }
+    if kind not in filename_map:
+        raise HTTPException(status_code=400, detail="kind harus 'terima' atau 'kirim'.")
+
+    filename, download_name = filename_map[kind]
+    # inventory_parts.py ada di app/api/v1/, jadi perlu naik DUA level (v1 -> api -> app)
+    # baru masuk ke app/assets/ - beda dengan service_report_template.py yang ada
+    # langsung di app/services/ (cukup naik satu level).
+    file_path = os.path.join(os.path.dirname(__file__), "..", "..", "assets", filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File contoh format tidak ditemukan di server.")
+
+    with open(file_path, "rb") as f:
+        content = f.read()
+
     return StreamingResponse(
-        excel_file,
+        BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=Contoh_Format_Upload_Stok.xlsx"},
+        headers={"Content-Disposition": f"attachment; filename={download_name}"},
     )
 
 
@@ -229,11 +298,15 @@ def bulk_upload_movements(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Upload massal pergerakan stok dari Excel, kolom: Kode Sparepart, Nama
-    Sparepart, Jumlah, Catatan (baris header terdeteksi otomatis & dilewati).
+    Upload massal pergerakan stok dari Excel, format kolom (7 kolom, sesuai
+    file "Contoh_Format_Upload_Terima_Stok.xlsx" / "..._Kirim_Stok.xlsx"):
+    Nama Sparepart, Kode Sparepart, Status, Model Alat, Jumlah,
+    Nama Cabang Asal/Tujuan, Catatan.
+    (baris header terdeteksi otomatis & dilewati).
     Setiap baris diproses dengan aturan yang SAMA PERSIS dengan input manual
-    satu-satu (stok tidak boleh minus, dst) - baris yang gagal dilaporkan
-    jelas tanpa membatalkan baris lain yang valid.
+    satu-satu (stok tidak boleh minus, Cabang Asal/Tujuan wajib utk jenis
+    pergerakan tertentu, dst) - baris yang gagal dilaporkan jelas tanpa
+    membatalkan baris lain yang valid.
     """
     loc = location.lower().strip()
     if loc not in VALID_INV_LOCATIONS:
@@ -263,22 +336,32 @@ def bulk_upload_movements(
         raise HTTPException(status_code=400, detail="File Excel kosong.")
 
     header_probe = " ".join(str(v).lower() for v in rows[0] if v)
-    start_row = 1 if ("kode" in header_probe or "sparepart" in header_probe or "jumlah" in header_probe) else 0
+    start_row = 1 if ("sparepart" in header_probe or "kode" in header_probe or "jumlah" in header_probe) else 0
+
+    def _cell(row, i):
+        return str(row[i]).strip() if len(row) > i and row[i] is not None else None
 
     berhasil, errors = 0, []
     for idx, row in enumerate(rows[start_row:], start=start_row + 1):
         if not row or not any(row):
             continue
-        code = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
-        name = str(row[1]).strip() if len(row) > 1 and row[1] is not None else None
+        name = _cell(row, 0)             # Nama Sparepart
+        code = _cell(row, 1) or ""       # Kode Sparepart
+        part_status = _cell(row, 2)      # Status
+        device_model = _cell(row, 3)     # Model Alat
         try:
-            quantity = int(row[2]) if len(row) > 2 and row[2] is not None else 0
+            qty_raw = row[4] if len(row) > 4 else None
+            quantity = int(qty_raw) if qty_raw is not None else 0
         except (ValueError, TypeError):
             quantity = 0
-        note = str(row[3]).strip() if len(row) > 3 and row[3] is not None else None
+        related_branch = _cell(row, 5)   # Nama Cabang Asal/Tujuan
+        note = _cell(row, 6)             # Catatan
 
         try:
-            _apply_single_movement(db, loc, movement_type, code, name, quantity, note, current_user.id)
+            _apply_single_movement(
+                db, loc, movement_type, code, name, quantity, note, current_user.id,
+                device_model=device_model, part_status=part_status, related_branch=related_branch,
+            )
             berhasil += 1
         except ValueError as e:
             errors.append({"row": idx, "reason": str(e)})
@@ -392,12 +475,19 @@ def report_movements(
         .all()
     )
     data = [
-        [m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "-", p.code, p.name or "-", m.quantity, m.note or "-"]
+        [
+            m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "-",
+            p.code, p.name or "-", m.device_model or "-", m.part_status or "-",
+            m.quantity, m.related_branch or "-", m.note or "-",
+        ]
         for m, p in rows
     ]
     label = MOVEMENT_LABELS.get(movement_type, movement_type)
     filename = f"Laporan_{label.replace(' ', '_')}_{loc}_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
-    return _excel_response(["Tanggal", "Kode Sparepart", "Nama Sparepart", "Jumlah", "Catatan"], data, label[:31], filename)
+    return _excel_response(
+        ["Tanggal", "Kode Sparepart", "Nama Sparepart", "Model Alat", "Status", "Jumlah", "Cabang Asal/Tujuan", "Catatan"],
+        data, label[:31], filename,
+    )
 
 
 @router.get("/report/opname")
