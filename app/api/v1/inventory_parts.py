@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.db.session import get_db
-from app.core.deps import get_current_user, require_department_access
+from app.core.deps import get_current_user, require_department_access, require_role
 from app.models.schema import PartCatalog, PartStock, PartStockMovement, PartStockOpname, User, BranchCatalog
 from app.services.excel_export import generate_inventory_excel
 
@@ -96,7 +96,13 @@ class OpnameIn(BaseModel):
     note: Optional[str] = None
 
 
-def _get_or_create_part(db: Session, code: str, name: Optional[str]) -> PartCatalog:
+def _get_or_create_part(db: Session, code: str, name: Optional[str], part_cache: Optional[dict] = None) -> PartCatalog:
+    if part_cache is not None and code in part_cache:
+        part = part_cache[code]
+        if name and part.name != name:
+            part.name = name
+        return part
+
     part = db.query(PartCatalog).filter(PartCatalog.code == code).first()
     if part is None:
         part = PartCatalog(code=code, name=name)
@@ -104,10 +110,17 @@ def _get_or_create_part(db: Session, code: str, name: Optional[str]) -> PartCata
         db.flush()
     elif name and part.name != name:
         part.name = name  # nama boleh diperbarui, kode tetap jadi kunci
+
+    if part_cache is not None:
+        part_cache[code] = part
     return part
 
 
-def _get_or_create_stock_row(db: Session, part_id: int, location: str) -> PartStock:
+def _get_or_create_stock_row(db: Session, part_id: int, location: str, stock_cache: Optional[dict] = None) -> PartStock:
+    cache_key = (part_id, location)
+    if stock_cache is not None and cache_key in stock_cache:
+        return stock_cache[cache_key]
+
     stock = (
         db.query(PartStock)
         .filter(PartStock.part_id == part_id, PartStock.location == location)
@@ -118,6 +131,9 @@ def _get_or_create_stock_row(db: Session, part_id: int, location: str) -> PartSt
         stock = PartStock(part_id=part_id, location=location, quantity=0)
         db.add(stock)
         db.flush()
+
+    if stock_cache is not None:
+        stock_cache[cache_key] = stock
     return stock
 
 
@@ -158,7 +174,7 @@ def _apply_single_movement(
     db: Session, loc: str, movement_type: str, code: str, name: Optional[str], quantity: int,
     note: Optional[str], user_id: int,
     device_model: Optional[str] = None, part_status: Optional[str] = None, related_branch: Optional[str] = None,
-    branch_cache: Optional[dict] = None,
+    branch_cache: Optional[dict] = None, part_cache: Optional[dict] = None, stock_cache: Optional[dict] = None,
 ):
     """
     Logika inti SATU baris pergerakan stok - dipakai bersama oleh endpoint
@@ -217,8 +233,8 @@ def _apply_single_movement(
         related_branch = official_name  # normalisasi ke ejaan resmi yang terdaftar
 
     direction = allowed[movement_type]
-    part = _get_or_create_part(db, code.strip(), name)
-    stock = _get_or_create_stock_row(db, part.id, loc)
+    part = _get_or_create_part(db, code.strip(), name, part_cache=part_cache)
+    stock = _get_or_create_stock_row(db, part.id, loc, stock_cache=stock_cache)
 
     # ---- TAHAP 1: VALIDASI DULU (belum ada angka stok yang diubah) ----
     new_quantity = stock.quantity + (direction * quantity)
@@ -230,7 +246,7 @@ def _apply_single_movement(
     mirror_new_quantity = None
     if mirror_type and loc == "pusat":
         mirror_direction = MOVEMENT_RULES["cabang"][mirror_type]
-        mirror_stock = _get_or_create_stock_row(db, part.id, "cabang")
+        mirror_stock = _get_or_create_stock_row(db, part.id, "cabang", stock_cache=stock_cache)
         mirror_new_quantity = mirror_stock.quantity + (mirror_direction * quantity)
         if mirror_new_quantity < 0:
             raise ValueError(
@@ -393,10 +409,23 @@ def bulk_upload_movements(
     header_probe = " ".join(str(v).lower() for v in rows[0] if v)
     start_row = 1 if ("sparepart" in header_probe or "kode" in header_probe or "jumlah" in header_probe) else 0
 
-    # Ambil semua nama cabang aktif SEKALI di awal (bukan query berulang per baris)
-    # - untuk file ratusan baris ini penghematan besar dan jadi salah satu penyebab
-    # utama proses jadi lambat/timeout sebelumnya.
+    # ---- Ambil SEMUA data yang mungkin dibutuhkan di awal, sekali saja ----
+    # (bukan query berulang di dalam loop per baris) - untuk file berisi ratusan
+    # baris, ini memangkas ratusan query database jadi hanya beberapa. Ini
+    # penyebab utama proses lambat/timeout ("upstream error") pada file besar.
     branch_cache = {b.name.lower(): b.name for b in db.query(BranchCatalog).filter(BranchCatalog.is_active.is_(True)).all()}
+
+    distinct_codes = {
+        str(row[1]).strip() for row in rows[start_row:]
+        if row and len(row) > 1 and row[1] is not None and str(row[1]).strip()
+    }
+    part_cache = {p.code: p for p in db.query(PartCatalog).filter(PartCatalog.code.in_(distinct_codes)).all()} if distinct_codes else {}
+
+    stock_cache = {}
+    if part_cache:
+        existing_part_ids = [p.id for p in part_cache.values()]
+        for s in db.query(PartStock).filter(PartStock.part_id.in_(existing_part_ids)).with_for_update().all():
+            stock_cache[(s.part_id, s.location)] = s
 
     def _cell(row, i):
         return str(row[i]).strip() if len(row) > i and row[i] is not None else None
@@ -421,7 +450,7 @@ def bulk_upload_movements(
             _apply_single_movement(
                 db, loc, movement_type, code, name, quantity, note, current_user.id,
                 device_model=device_model, part_status=part_status, related_branch=related_branch,
-                branch_cache=branch_cache,
+                branch_cache=branch_cache, part_cache=part_cache, stock_cache=stock_cache,
             )
             berhasil += 1
         except ValueError as e:
@@ -437,6 +466,33 @@ def bulk_upload_movements(
         "gagal": len(errors),
         "detail_gagal": errors[:50],
     }
+
+
+@router.post("/reset-stock-testing")
+def reset_stock_for_testing(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_role("superadmin")),
+):
+    """
+    TOMBOL SEMENTARA UNTUK TESTING - mengembalikan jumlah stok (Jumlah Stok) di
+    SEMUA sparepart, di KEDUA lokasi (Pusat dan Cabang), jadi 0.
+
+    SENGAJA TIDAK menghapus apa pun yang lain:
+    - Katalog sparepart (kode, nama, Status, Model Alat) TETAP ADA - jadi
+      upload/kirim berikutnya tidak perlu mengetik ulang data sparepart.
+    - Riwayat pergerakan stok (PartStockMovement) dan riwayat stok opname
+      TETAP TERSIMPAN sebagai jejak audit permanen (sesuai aturan sistem ini
+      sejak awal - tidak pernah menghapus riwayat).
+
+    CATATAN: karena riwayat pergerakan TIDAK ikut direset, kalau tombol ini
+    dipakai berkali-kali untuk testing di database yang sama dengan data
+    produksi, laporan "Total Kirim ke Cabang" dkk akan ikut memuat baris-baris
+    hasil testing tsb. Kalau perlu riwayat testing juga dibersihkan, beri tahu
+    saya - itu perubahan terpisah karena sifatnya menghapus data permanen.
+    """
+    updated = db.query(PartStock).update({PartStock.quantity: 0})
+    db.commit()
+    return {"status": "success", "jumlah_baris_direset": updated}
 
 
 @router.post("/opname")
