@@ -72,6 +72,12 @@ class ServiceTicket(Base):
     total_price = Column(Float, default=0.0)
     payment_code = Column(String(50), nullable=True)
     payment_status = Column(String(30), default="Belum Lunas")
+
+    # BARU: Data untuk keperluan pembayaran (Tab Status Payment Service)
+    customer_id_number = Column(String(30), nullable=True)  # NIK atau NPWP pelanggan
+    payment_method = Column(String(50), nullable=True)      # kanal yang dipilih, mis. VIRTUAL_ACCOUNT_BCA
+    payment_url = Column(String(500), nullable=True)        # link halaman pembayaran DOKU
+    payment_expired_at = Column(DateTime, nullable=True)    # kapan kode bayar/VA ini kedaluwarsa
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
