@@ -18,3 +18,5 @@ python-jose[cryptography]==3.3.0
 alembic==1.13.2
 email-validator==2.2.0
 Pillow==10.4.0
+reportlab==4.2.5 
+requests==2.32.3
