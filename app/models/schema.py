@@ -229,3 +229,40 @@ class PartStockOpname(Base):
 
     part = relationship("PartCatalog")
     performed_by = relationship("User")
+
+
+# ==================== KELOLA CABANG & PICKUP CENTER (Master Data) ====================
+# CATATAN: tabel ini murni master data (daftar cabang/pickup center yang bisa
+# ditambah/edit/nonaktifkan lewat menu Setting). BELUM dihubungkan ke alur
+# pembuatan tiket/inventory yang sudah ada (yang masih pakai service_type
+# "pusat"/"cabang"/"pickup" sebagai satu bucket per lokasi) - kalau nanti mau
+# tiket/inventory memilih cabang/pickup SPESIFIK dari daftar ini, itu perlu
+# perubahan lanjutan tersendiri.
+
+class BranchCatalog(Base):
+    """Master data Cabang (OEC-Medan, OEC-Bandung, dst)."""
+    __tablename__ = "branch_catalog"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)          # Nama Cabang, mis. "OEC-Medan"
+    code = Column(String(20), unique=True, index=True, nullable=False)  # Kode Store, mis. "MDN"
+    handled_by = Column(String(150), nullable=True)      # Handle by, mis. "Mitracare"
+    city = Column(String(100), nullable=True)            # Kota
+    address = Column(Text, nullable=True)                # Alamat lengkap
+    is_active = Column(Boolean, default=True, nullable=False)  # nonaktifkan = soft, bukan delete
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PickupCenterCatalog(Base):
+    """Master data Pickup Center (mis. jaringan Apotek Alpro yang jadi drop-off point)."""
+    __tablename__ = "pickup_center_catalog"
+
+    id = Column(Integer, primary_key=True, index=True)
+    store_long_code = Column(String(50), unique=True, index=True, nullable=False)  # mis. "0001 - JKJSTT1"
+    store_name = Column(String(200), nullable=False)     # Store Name
+    store_address = Column(Text, nullable=True)          # Store Address
+    city = Column(String(100), nullable=True)            # City
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

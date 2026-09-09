@@ -10,6 +10,7 @@ from app.models.inventory import SparePart, StockInventory, StockMutation
 from app.models.schema import (
     ServiceTicket, User, LocationCounter, DeviceModelCatalog, TicketSparePart,
     PartCatalog, PartStock, PartStockMovement, PartStockOpname,
+    BranchCatalog, PickupCenterCatalog,
 )
 
 __all__ = [
@@ -29,4 +30,6 @@ __all__ = [
     "PartStock",
     "PartStockMovement",
     "PartStockOpname",
+    "BranchCatalog",
+    "PickupCenterCatalog",
 ]
