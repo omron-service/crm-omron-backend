@@ -158,12 +158,20 @@ def _apply_single_movement(
     db: Session, loc: str, movement_type: str, code: str, name: Optional[str], quantity: int,
     note: Optional[str], user_id: int,
     device_model: Optional[str] = None, part_status: Optional[str] = None, related_branch: Optional[str] = None,
+    branch_cache: Optional[dict] = None,
 ):
     """
     Logika inti SATU baris pergerakan stok - dipakai bersama oleh endpoint
-    manual (/movement) MAUPUN upload massal Excel (/movement/bulk-upload),
-    supaya keduanya konsisten (validasi lokasi, jenis pergerakan, stok tidak
-    boleh minus, sama persis).
+    manual (/movement) MAUPUN upload massal Excel (/movement/bulk-upload).
+
+    PENTING soal performa & keamanan data (upload file besar seperti 164 baris):
+    Fungsi ini SENGAJA didesain dua tahap - VALIDASI DULU SEMUANYA (termasuk
+    kecukupan stok di KEDUA lokasi untuk pergerakan berpasangan Pusat<->Cabang),
+    baru kemudian benar-benar MENGUBAH ANGKA STOK. Dengan begitu, begitu proses
+    "menulis" dimulai, dijamin tidak akan gagal di tengah jalan - jadi TIDAK
+    PERLU pakai SAVEPOINT per baris (yang tadinya dipakai untuk jaga-jaga rollback
+    per baris, tapi ternyata menyebabkan PostgreSQL sangat lambat kalau dipakai
+    lebih dari ~64 kali dalam satu transaksi - persis kasus file besar Anda).
     """
     allowed = MOVEMENT_RULES.get(loc, {})
     if movement_type not in allowed:
@@ -187,51 +195,39 @@ def _apply_single_movement(
         # Nama cabang WAJIB cocok dengan daftar aktif di menu Kelola Cabang -
         # mencegah salah ketik nama cabang (mis. "Mendan" vs "Medan") yang
         # kalau dibiarkan bebas teks akan sulit dilacak & direkap nanti.
-        branch_match = (
-            db.query(BranchCatalog)
-            .filter(BranchCatalog.name.ilike(related_branch.strip()), BranchCatalog.is_active.is_(True))
-            .first()
-        )
-        if not branch_match:
+        # Kalau branch_cache disediakan (dipakai upload massal), lookup nama
+        # cabang lewat dict di memori - menghindari 1 query database per BARIS
+        # yang untuk file besar (ratusan baris) jadi penyumbang utama lambatnya
+        # proses dan risiko timeout ("upstream error").
+        branch_key = related_branch.strip().lower()
+        if branch_cache is not None:
+            official_name = branch_cache.get(branch_key)
+        else:
+            branch_match = (
+                db.query(BranchCatalog)
+                .filter(BranchCatalog.name.ilike(related_branch.strip()), BranchCatalog.is_active.is_(True))
+                .first()
+            )
+            official_name = branch_match.name if branch_match else None
+        if not official_name:
             raise ValueError(
                 f"Nama cabang '{related_branch}' tidak ditemukan di daftar Kelola Cabang (atau sedang nonaktif). "
                 f"Pastikan nama cabang persis sama dengan yang terdaftar."
             )
-        related_branch = branch_match.name  # normalisasi ke ejaan resmi yang terdaftar
+        related_branch = official_name  # normalisasi ke ejaan resmi yang terdaftar
 
     direction = allowed[movement_type]
     part = _get_or_create_part(db, code.strip(), name)
     stock = _get_or_create_stock_row(db, part.id, loc)
 
+    # ---- TAHAP 1: VALIDASI DULU (belum ada angka stok yang diubah) ----
     new_quantity = stock.quantity + (direction * quantity)
     if new_quantity < 0:
         raise ValueError(f"Stok tidak mencukupi untuk '{part.code}'. Stok saat ini {stock.quantity}, tidak bisa mengurangi {quantity}.")
 
-    stock.quantity = new_quantity
-    normalized_status = None
-    if part_status and part_status.strip():
-        normalized_status = "Active" if part_status.strip().lower() == "active" else "Discontinue"
-
-    db.add(PartStockMovement(
-        part_id=part.id, location=loc, movement_type=movement_type,
-        quantity=quantity, note=note, performed_by_user_id=user_id,
-        device_model=device_model.strip() if device_model else None,
-        part_status=normalized_status,
-        related_branch=related_branch.strip() if related_branch else None,
-    ))
-    # Status & Model Alat juga dicatat sebagai atribut terkini di katalog sparepart
-    # (bukan cuma di riwayat pergerakan), supaya bisa dilihat langsung di tabel stok.
-    if normalized_status:
-        part.status = normalized_status
-    if device_model and device_model.strip():
-        part.model_alat = device_model.strip()
-
-    # ---- PENTING: cerminkan otomatis ke stok Cabang untuk pasangan pergerakan ----
-    # "Kirim ke Cabang" dan "Terima dari Cabang" adalah PERPINDAHAN barang antar
-    # lokasi (bukan cuma catatan sepihak di Pusat) - jadi stok Cabang HARUS ikut
-    # berubah dalam transaksi yang SAMA, supaya tidak ada kejadian "stok Pusat
-    # berkurang tapi stok Cabang tidak bertambah" seperti yang dilaporkan.
     mirror_type = MIRROR_MOVEMENT_TYPE.get(movement_type)
+    mirror_stock = None
+    mirror_new_quantity = None
     if mirror_type and loc == "pusat":
         mirror_direction = MOVEMENT_RULES["cabang"][mirror_type]
         mirror_stock = _get_or_create_stock_row(db, part.id, "cabang")
@@ -242,6 +238,27 @@ def _apply_single_movement(
                 f"'{MOVEMENT_LABELS.get(mirror_type, mirror_type)}'. Stok Cabang saat ini "
                 f"{mirror_stock.quantity}, tidak bisa mengurangi {quantity}."
             )
+
+    # ---- TAHAP 2: SEMUA VALIDASI LOLOS - baru sekarang benar-benar ditulis ----
+    normalized_status = None
+    if part_status and part_status.strip():
+        normalized_status = "Active" if part_status.strip().lower() == "active" else "Discontinue"
+    clean_device_model = device_model.strip() if device_model else None
+    clean_related_branch = related_branch.strip() if related_branch else None
+
+    stock.quantity = new_quantity
+    db.add(PartStockMovement(
+        part_id=part.id, location=loc, movement_type=movement_type,
+        quantity=quantity, note=note, performed_by_user_id=user_id,
+        device_model=clean_device_model, part_status=normalized_status,
+        related_branch=clean_related_branch,
+    ))
+    if normalized_status:
+        part.status = normalized_status
+    if clean_device_model:
+        part.model_alat = clean_device_model
+
+    if mirror_stock is not None:
         mirror_stock.quantity = mirror_new_quantity
         db.add(PartStockMovement(
             part_id=part.id, location="cabang", movement_type=mirror_type,
@@ -249,9 +266,8 @@ def _apply_single_movement(
             note=(f"Otomatis - pasangan dari '{MOVEMENT_LABELS.get(movement_type, movement_type)}' di Pusat"
                   + (f" ({note})" if note else "")),
             performed_by_user_id=user_id,
-            device_model=device_model.strip() if device_model else None,
-            part_status=normalized_status,
-            related_branch=related_branch.strip() if related_branch else None,
+            device_model=clean_device_model, part_status=normalized_status,
+            related_branch=clean_related_branch,
         ))
 
     return part, stock
@@ -377,6 +393,11 @@ def bulk_upload_movements(
     header_probe = " ".join(str(v).lower() for v in rows[0] if v)
     start_row = 1 if ("sparepart" in header_probe or "kode" in header_probe or "jumlah" in header_probe) else 0
 
+    # Ambil semua nama cabang aktif SEKALI di awal (bukan query berulang per baris)
+    # - untuk file ratusan baris ini penghematan besar dan jadi salah satu penyebab
+    # utama proses jadi lambat/timeout sebelumnya.
+    branch_cache = {b.name.lower(): b.name for b in db.query(BranchCatalog).filter(BranchCatalog.is_active.is_(True)).all()}
+
     def _cell(row, i):
         return str(row[i]).strip() if len(row) > i and row[i] is not None else None
 
@@ -397,13 +418,11 @@ def bulk_upload_movements(
         note = _cell(row, 6)             # Catatan
 
         try:
-            with db.begin_nested():  # SAVEPOINT per baris - kalau gagal, HANYA baris ini
-                                       # yang dibatalkan, baris lain yang sudah berhasil
-                                       # sebelumnya di batch yang sama tetap aman.
-                _apply_single_movement(
-                    db, loc, movement_type, code, name, quantity, note, current_user.id,
-                    device_model=device_model, part_status=part_status, related_branch=related_branch,
-                )
+            _apply_single_movement(
+                db, loc, movement_type, code, name, quantity, note, current_user.id,
+                device_model=device_model, part_status=part_status, related_branch=related_branch,
+                branch_cache=branch_cache,
+            )
             berhasil += 1
         except ValueError as e:
             errors.append({"row": idx, "reason": str(e)})
