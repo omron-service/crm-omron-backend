@@ -556,6 +556,7 @@ def admin_dashboard_page():
             .upload-result-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
             .upload-result-partial { background: #fff3cd; border: 1px solid #ffc107; color: #856404; }
             .upload-result-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+            .field-note-pd { font-size: 11px; color: #888; margin-top: 3px; }
 
             aside { width: 260px; background: #003d80; color: white; display: flex; flex-direction: column; flex-shrink: 0; }
             aside .brand { padding: 20px; font-size: 18px; font-weight: bold; background: #002b5c; border-bottom: 1px solid rgba(255,255,255,0.1); }
@@ -2230,18 +2231,54 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 </div>
 
                                 <div class="form-grid" style="margin-top:10px;">
-                                    <div><label style="font-weight:bold; color:#666;">Nama Pemilik</label><div id="pdCustomerName-${loc}" style="padding:8px 0;"></div></div>
-                                    <div><label style="font-weight:bold; color:#666;">Model Alat</label><div id="pdDeviceModel-${loc}" style="padding:8px 0;"></div></div>
-                                    <div><label style="font-weight:bold; color:#666;">No. HP/WA</label><div id="pdPhone-${loc}" style="padding:8px 0;"></div></div>
-                                    <div><label style="font-weight:bold; color:#666;">Status Garansi</label><div id="pdWarranty-${loc}" style="padding:8px 0;"></div></div>
+                                    <div><label style="font-weight:bold; color:#666; font-size:12px;">Nama Pemilik</label><div id="pdCustomerName-${loc}" style="padding:8px 0; font-size:13px;"></div></div>
+                                    <div><label style="font-weight:bold; color:#666; font-size:12px;">No. HP/WA</label><div id="pdPhone-${loc}" style="padding:8px 0; font-size:13px;"></div></div>
+                                    <div><label style="font-weight:bold; color:#666; font-size:12px;">Status Garansi</label><div id="pdWarranty-${loc}" style="padding:8px 0; font-size:13px;"></div></div>
                                 </div>
 
                                 <hr style="margin:15px 0; border:none; border-top:1px solid #eee;">
 
-                                <div class="form-grid">
-                                    <div class="form-group"><label>NIK / NPWP Pelanggan</label><input id="pdIdNumber-${loc}" placeholder="Opsional"></div>
-                                    <div class="form-group"><label>Harga Service (Rp) <span class="required">*</span></label><input type="number" min="0" id="pdTotalPrice-${loc}"></div>
+                                <div class="form-group">
+                                    <label>Nama Pemilik untuk Invoice</label>
+                                    <input id="pdOwnerName-${loc}">
+                                    <div class="field-note-pd">Otomatis tersalin dari "Nama Pemilik" tiket. Kalau nama di NIK/NPWP beda (mis. invoice atas nama instansi/orang lain), hapus dan ketik langsung di sini - TIDAK mengubah Nama Pemilik di tiket/Data Service, hanya dipakai di dokumen Penawaran/Invoice ini saja.</div>
                                 </div>
+
+                                <div class="form-grid">
+                                    <div class="form-group"><label>NIK / NPWP</label><input id="pdIdNumber-${loc}" placeholder="Opsional"></div>
+                                    <div class="form-group"><label>Email</label><input type="email" id="pdEmail-${loc}" placeholder="nama@email.com (opsional)"></div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Alamat</label>
+                                    <input id="pdAddress-${loc}">
+                                    <div class="field-note-pd">Otomatis terisi dari data tiket, bisa diedit khusus untuk keperluan Penawaran/Invoice ini.</div>
+                                </div>
+
+                                <hr style="margin:15px 0; border-top:2px dashed #0056b3;">
+                                <div style="font-weight:bold; color:#0056b3; font-size:13px; margin-bottom:10px;">Item Layanan (bisa lebih dari satu alat)</div>
+
+                                <div id="pdItemsContainer-${loc}"></div>
+                                <button class="btn btn-secondary" style="font-size:11px; padding:5px 9px;" onclick="addBillingItemRow('${loc}')">+ Tambah Item</button>
+                                <div style="text-align:right; font-size:13px; font-weight:bold; color:#0056b3; margin-top:8px; padding-top:10px; border-top:1px solid #ddd;">
+                                    Total Harga Service: Rp <span id="pdTotalDisplay-${loc}">0</span>
+                                </div>
+
+                                <hr style="margin:15px 0; border:none; border-top:1px solid #eee;">
+
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <input type="checkbox" id="pdManualPrice-${loc}" style="width:auto;" onchange="document.getElementById('pdManualWrap-${loc}').classList.toggle('hidden', !this.checked)">
+                                    <label for="pdManualPrice-${loc}" style="margin-bottom:0; font-weight:normal; font-size:13px;">Input Harga Manual (PPH 23 &amp; Biaya Admin Bank)</label>
+                                </div>
+                                <div id="pdManualWrap-${loc}" class="hidden form-grid">
+                                    <div class="form-group"><label>PPH 23 (Rp)</label><input type="number" min="0" id="pdPph23-${loc}" placeholder="0"></div>
+                                    <div class="form-group"><label>Biaya Admin Bank (Rp)</label><input type="number" min="0" id="pdAdminBank-${loc}" placeholder="0"></div>
+                                </div>
+
+                                <div style="display:flex; align-items:center; gap:8px; margin:8px 0 15px;">
+                                    <input type="checkbox" id="pdPpnFree-${loc}" style="width:auto;">
+                                    <label for="pdPpnFree-${loc}" style="margin-bottom:0; font-weight:normal; font-size:13px;">Bebas PPN (0%) untuk transaksi ini</label>
+                                </div>
+
                                 <button class="btn btn-success" onclick="savePaymentInfo('${loc}')">💾 Simpan Info Pembayaran</button>
 
                                 <hr style="margin:15px 0; border:none; border-top:1px solid #eee;">
@@ -2272,6 +2309,142 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 });
             }
 
+            // ---------- ITEM LAYANAN (bisa lebih dari 1 alat per dokumen) ----------
+
+            let billingItemCounters = {}; // { [loc]: jumlah item yang sudah dibuat, utk penomoran Item # }
+
+            function billingCategoryOptions(selected) {
+                return PRODUCT_CATEGORIES.map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
+            }
+
+            async function onBillingItemCategoryChange(selectEl) {
+                const row = selectEl.closest('.item-row');
+                const category = selectEl.value;
+                let modelEl = row.querySelector('.item-model');
+
+                if (!category) {
+                    modelEl.innerHTML = '<option value="">-- Pilih Kategori dulu --</option>';
+                    return;
+                }
+                if (category === 'Others') {
+                    modelEl.outerHTML = `<input class="item-model" placeholder="Ketik nama model alat">`;
+                    return;
+                }
+                if (modelEl.tagName !== 'SELECT') {
+                    modelEl.outerHTML = `<select class="item-model"><option value="">Memuat...</option></select>`;
+                    modelEl = row.querySelector('.item-model');
+                } else {
+                    modelEl.innerHTML = '<option value="">Memuat...</option>';
+                }
+                try {
+                    const res = await authFetch(`/api/v1/device-models/?category=${encodeURIComponent(category)}`);
+                    const models = res.ok ? await res.json() : [];
+                    modelEl.innerHTML = models.length
+                        ? '<option value="">-- Pilih Model --</option>' + models.map(m => `<option value="${esc(m.model_name)}">${esc(m.model_name)}</option>`).join('')
+                        : '<option value="">(Belum ada model utk kategori ini)</option>';
+                } catch(e) {
+                    modelEl.innerHTML = '<option value="">Gagal memuat model</option>';
+                }
+            }
+
+            function addBillingItemRow(loc, prefill) {
+                prefill = prefill || {};
+                billingItemCounters[loc] = (billingItemCounters[loc] || 0) + 1;
+                const num = billingItemCounters[loc];
+                const isFirst = num === 1;
+                const container = document.getElementById(`pdItemsContainer-${loc}`);
+                const div = document.createElement('div');
+                div.className = 'item-row';
+                div.style.cssText = 'background:#f8f9fa; border:1px dashed #ccc; padding:10px; border-radius:6px; margin-bottom:10px;';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-weight:bold; font-size:12px; color:#0056b3;">Item #${num}${isFirst ? ' (alat pada tiket ini)' : ''}</span>
+                        <button class="btn btn-danger" style="font-size:11px; padding:4px 8px;" onclick="this.closest('.item-row').remove(); recalcBillingTotal('${loc}');">Hapus</button>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Jenis Layanan</label>
+                            <select class="item-service-type">
+                                <option value="Perbaikan" ${prefill.service_type !== 'Kalibrasi' ? 'selected' : ''}>Perbaikan</option>
+                                <option value="Kalibrasi" ${prefill.service_type === 'Kalibrasi' ? 'selected' : ''}>Kalibrasi</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Kategori Produk</label>
+                            <select class="item-category" onchange="onBillingItemCategoryChange(this)">
+                                <option value="">-- Pilih Kategori --</option>
+                                ${billingCategoryOptions(prefill.product_category)}
+                            </select>
+                            ${isFirst ? '<div class="field-note-pd">Otomatis terisi dari data tiket, bisa diedit khusus untuk keperluan Penawaran/Invoice ini.</div>' : ''}
+                        </div>
+                        <div class="form-group">
+                            <label>Model Alat</label>
+                            <select class="item-model"><option value="">-- Pilih Kategori dulu --</option></select>
+                            ${isFirst ? '<div class="field-note-pd">Otomatis terisi dari data tiket, bisa diedit khusus untuk keperluan Penawaran/Invoice ini.</div>' : ''}
+                        </div>
+                        <div class="form-group"><label>Jumlah</label><input type="number" class="item-qty" value="${prefill.quantity || 1}" min="1" oninput="recalcBillingTotal('${loc}')"></div>
+                        <div class="form-group"><label>Harga (Rp)</label><input type="number" class="item-price" value="${prefill.price || 0}" min="0" oninput="recalcBillingTotal('${loc}')"></div>
+                        ${!isFirst ? `
+                        <div class="form-group">
+                            <label>No. Tiket Referensi</label>
+                            <input class="item-ref-ticket" placeholder="Contoh: JKT-2600002" onblur="lookupRefTicket(this, '${loc}')">
+                            <div class="field-note-pd item-ref-status">Ketik nomor tiket alat lain, Kategori &amp; Model diambil otomatis.</div>
+                        </div>` : ''}
+                    </div>
+                    <input type="hidden" class="item-serial" value="${esc(prefill.serial_number || '')}">
+                    <input type="hidden" class="item-description" value="${esc(prefill.description || '')}">
+                `;
+                container.appendChild(div);
+                if (prefill.product_category) {
+                    onBillingItemCategoryChange(div.querySelector('.item-category')).then(() => {
+                        div.querySelector('.item-model').value = prefill.device_model || '';
+                    });
+                }
+                recalcBillingTotal(loc);
+            }
+
+            function recalcBillingTotal(loc) {
+                let total = 0;
+                document.querySelectorAll(`#pdItemsContainer-${loc} .item-row`).forEach(row => {
+                    const qty = parseFloat(row.querySelector('.item-qty')?.value || 0);
+                    const price = parseFloat(row.querySelector('.item-price')?.value || 0);
+                    total += qty * price;
+                });
+                document.getElementById(`pdTotalDisplay-${loc}`).innerText = total.toLocaleString('id-ID');
+            }
+
+            async function lookupRefTicket(inputEl, loc) {
+                const row = inputEl.closest('.item-row');
+                const statusEl = row.querySelector('.item-ref-status');
+                const ticketNo = inputEl.value.trim().toUpperCase();
+                inputEl.value = ticketNo;
+                if (!ticketNo) {
+                    statusEl.textContent = 'Ketik nomor tiket alat lain, Kategori & Model diambil otomatis.';
+                    statusEl.style.color = '#888';
+                    return;
+                }
+                try {
+                    const res = await authFetch(`/api/v1/db/tickets/detail/${encodeURIComponent(ticketNo)}`);
+                    if (!res.ok) {
+                        statusEl.textContent = `✗ Tiket "${ticketNo}" tidak ditemukan.`;
+                        statusEl.style.color = '#dc3545';
+                        return;
+                    }
+                    const t = await res.json();
+                    const categorySelect = row.querySelector('.item-category');
+                    categorySelect.value = t.product_category || '';
+                    await onBillingItemCategoryChange(categorySelect);
+                    row.querySelector('.item-model').value = t.device_model || '';
+                    row.querySelector('.item-serial').value = t.serial_number || '';
+                    row.querySelector('.item-description').value = t.complaint || '';
+                    statusEl.textContent = `✓ Ditemukan - pemilik: ${t.customer_name}. Kategori & Model otomatis terisi.`;
+                    statusEl.style.color = '#28a745';
+                } catch(e) {
+                    statusEl.textContent = 'Gagal memeriksa nomor tiket.';
+                    statusEl.style.color = '#dc3545';
+                }
+            }
+
             async function openPaymentDetail(ticketNumber, loc) {
                 try {
                     const res = await authFetch(`/api/v1/db/tickets/detail/${encodeURIComponent(ticketNumber)}`);
@@ -2281,12 +2454,47 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     currentPaymentTicket[loc] = ticketNumber;
                     document.getElementById(`pdTitle-${loc}`).innerText = `Kelola Pembayaran - ${ticketNumber}`;
                     document.getElementById(`pdCustomerName-${loc}`).innerText = t.customer_name || '-';
-                    document.getElementById(`pdDeviceModel-${loc}`).innerText = t.device_model || '-';
                     document.getElementById(`pdPhone-${loc}`).innerText = t.customer_phone || '-';
                     document.getElementById(`pdWarranty-${loc}`).innerText = t.warranty_status || '-';
+
+                    setVal(`pdOwnerName-${loc}`, t.invoice_owner_name || t.customer_name || '');
                     setVal(`pdIdNumber-${loc}`, t.customer_id_number || '');
-                    setVal(`pdTotalPrice-${loc}`, t.total_price || '');
+                    setVal(`pdEmail-${loc}`, t.customer_email || '');
+                    setVal(`pdAddress-${loc}`, t.invoice_address || t.customer_address || '');
+                    document.getElementById(`pdPpnFree-${loc}`).checked = !!t.ppn_free;
+                    document.getElementById(`pdManualPrice-${loc}`).checked = !!t.use_manual_price_breakdown;
+                    document.getElementById(`pdManualWrap-${loc}`).classList.toggle('hidden', !t.use_manual_price_breakdown);
+                    setVal(`pdPph23-${loc}`, t.pph23_amount || '');
+                    setVal(`pdAdminBank-${loc}`, t.admin_bank_fee || '');
                     setVal(`pdPaymentMethod-${loc}`, t.payment_method || '');
+
+                    // Muat ulang Item Layanan: kalau tiket sudah pernah simpan item, pakai
+                    // itu; kalau belum pernah sama sekali, Item #1 dibuat otomatis dari
+                    // data tiket ini sendiri (kategori/model/serial/keluhan).
+                    document.getElementById(`pdItemsContainer-${loc}`).innerHTML = '';
+                    billingItemCounters[loc] = 0;
+                    const items = t.billing_items || [];
+                    if (items.length) {
+                        items.sort((a, b) => (a.sequence || 0) - (b.sequence || 0)).forEach(item => {
+                            addBillingItemRow(loc, {
+                                service_type: item.service_type, product_category: item.product_category,
+                                device_model: item.device_model, quantity: item.quantity, price: item.price,
+                                serial_number: item.serial_number, description: item.description,
+                            });
+                            if (item.ref_ticket_number) {
+                                const rows = document.querySelectorAll(`#pdItemsContainer-${loc} .item-row`);
+                                const lastRow = rows[rows.length - 1];
+                                const refInput = lastRow.querySelector('.item-ref-ticket');
+                                if (refInput) refInput.value = item.ref_ticket_number;
+                            }
+                        });
+                    } else {
+                        addBillingItemRow(loc, {
+                            service_type: 'Perbaikan', product_category: t.product_category,
+                            device_model: t.device_model, quantity: 1, price: t.total_price || 0,
+                            serial_number: t.serial_number, description: t.complaint,
+                        });
+                    }
 
                     const resultBox = document.getElementById(`pdPaymentResult-${loc}`);
                     if (t.payment_url) {
@@ -2322,21 +2530,50 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
             async function savePaymentInfo(loc) {
                 const ticketNumber = currentPaymentTicket[loc];
                 if (!ticketNumber) return;
-                const totalPrice = valOf(`pdTotalPrice-${loc}`);
-                if (totalPrice === '') return alert('Harga Service wajib diisi.');
+
+                const items = [];
+                document.querySelectorAll(`#pdItemsContainer-${loc} .item-row`).forEach(row => {
+                    const category = row.querySelector('.item-category')?.value || null;
+                    const modelEl = row.querySelector('.item-model');
+                    const model = modelEl ? modelEl.value : null;
+                    const qty = parseInt(row.querySelector('.item-qty')?.value || '1');
+                    const price = parseFloat(row.querySelector('.item-price')?.value || '0');
+                    const refTicket = row.querySelector('.item-ref-ticket')?.value.trim() || null;
+                    items.push({
+                        service_type: row.querySelector('.item-service-type')?.value || 'Perbaikan',
+                        product_category: category,
+                        device_model: model,
+                        serial_number: row.querySelector('.item-serial')?.value || null,
+                        description: row.querySelector('.item-description')?.value || null,
+                        quantity: qty > 0 ? qty : 1,
+                        price: price >= 0 ? price : 0,
+                        ref_ticket_number: refTicket,
+                    });
+                });
+
+                const useManual = document.getElementById(`pdManualPrice-${loc}`).checked;
+                const payload = {
+                    invoice_owner_name: valOf(`pdOwnerName-${loc}`) || null,
+                    customer_id_number: valOf(`pdIdNumber-${loc}`) || null,
+                    customer_email: valOf(`pdEmail-${loc}`) || null,
+                    invoice_address: valOf(`pdAddress-${loc}`) || null,
+                    ppn_free: document.getElementById(`pdPpnFree-${loc}`).checked,
+                    use_manual_price_breakdown: useManual,
+                    pph23_amount: useManual && valOf(`pdPph23-${loc}`) ? parseFloat(valOf(`pdPph23-${loc}`)) : null,
+                    admin_bank_fee: useManual && valOf(`pdAdminBank-${loc}`) ? parseFloat(valOf(`pdAdminBank-${loc}`)) : null,
+                    items: items,
+                };
 
                 try {
-                    const res = await authFetch(`/api/v1/db/tickets/${encodeURIComponent(ticketNumber)}/payment-info`, {
+                    const res = await authFetch(`/api/v1/db/tickets/${encodeURIComponent(ticketNumber)}/billing-info`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            customer_id_number: valOf(`pdIdNumber-${loc}`) || null,
-                            total_price: parseFloat(totalPrice),
-                        }),
+                        body: JSON.stringify(payload),
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan info pembayaran.');
                     alert('Info pembayaran berhasil disimpan.');
+                    renderTableData('payment-' + loc);
                 } catch(e) {
                     alert(e.message);
                 }
