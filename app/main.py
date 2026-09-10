@@ -570,7 +570,7 @@ def pickup_intake_page():
 
                     __TURNSTILE_WIDGET__
 
-                    <button type="submit">Simpan Drop-Off</button>
+                    <button type="submit" id="pickupSubmitBtn">Simpan Drop-Off</button>
                 </form>
             </div>
         </div>
@@ -646,6 +646,9 @@ def pickup_intake_page():
                 const errorBox = document.getElementById('errorBox');
                 errorBox.style.display = 'none';
 
+                const submitBtn = document.getElementById('pickupSubmitBtn');
+                if (submitBtn.disabled) return; // sedang diproses - abaikan klik dobel
+
                 const name = document.getElementById('pName').value.trim();
                 const phone1 = document.getElementById('pPhone1').value.trim();
                 if (!name || !phone1) {
@@ -654,6 +657,9 @@ def pickup_intake_page():
                     return;
                 }
 
+                submitBtn.disabled = true;
+                const submitBtnOriginalText = submitBtn.innerText;
+                submitBtn.innerText = 'Menyimpan...';
                 const receivedDateVal = document.getElementById('pReceivedDate').value;
                 const payload = {
                     customer_name: name,
@@ -685,6 +691,9 @@ def pickup_intake_page():
                 } catch(err) {
                     errorBox.textContent = err.message;
                     errorBox.style.display = 'block';
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = submitBtnOriginalText;
                 }
             });
         </script>
@@ -1173,7 +1182,7 @@ def admin_dashboard_page():
                             <label>Password</label>
                             <input type="password" id="loginPassword">
                         </div>
-                        <button class="btn" style="width: 100%;" onclick="login()">Masuk ke Sistem</button>
+                        <button class="btn" style="width: 100%;" onclick="login(this)">Masuk ke Sistem</button>
                     </div>
 
                     <div id="bootstrapPane" class="hidden">
@@ -1190,7 +1199,7 @@ def admin_dashboard_page():
                             <label>Password (min. 8 karakter)</label>
                             <input type="password" id="bsPassword">
                         </div>
-                        <button class="btn btn-success" style="width: 100%;" onclick="bootstrapSuperadmin()">Buat Akun Super Admin</button>
+                        <button class="btn btn-success" style="width: 100%;" onclick="bootstrapSuperadmin(this)">Buat Akun Super Admin</button>
                     </div>
 
                     <div id="otpPane" class="hidden">
@@ -1199,7 +1208,7 @@ def admin_dashboard_page():
                             <label>Kode OTP</label>
                             <input type="text" id="otpCode" maxlength="6" inputmode="numeric" placeholder="123456" style="letter-spacing:4px; font-size:18px; text-align:center;">
                         </div>
-                        <button class="btn" style="width: 100%;" onclick="verifyOtp()">Verifikasi</button>
+                        <button class="btn" style="width: 100%;" onclick="verifyOtp(this)">Verifikasi</button>
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
                             <a href="#" onclick="cancelOtpFlow(); return false;" style="font-size:12px; color:#888;">&larr; Login ulang</a>
                             <a href="#" id="otpResendLink" onclick="resendOtp(); return false;" style="font-size:12px; color:#0056b3;">Kirim ulang kode</a>
@@ -1332,7 +1341,7 @@ def admin_dashboard_page():
                                 </div>
                                 <div class="form-group"><label>Nama Model</label><input id="dmModelName" placeholder="Contoh: HEM-7120"></div>
                             </div>
-                            <button class="btn btn-success" onclick="createDeviceModel()">Simpan Model</button>
+                            <button class="btn btn-success" id="deviceModelSaveBtn" onclick="createDeviceModel()">Simpan Model</button>
                         </div>
 
                         <table style="margin-top:15px;">
@@ -1484,11 +1493,12 @@ def admin_dashboard_page():
                 return res;
             }
 
-            async function bootstrapSuperadmin() {
+            async function bootstrapSuperadmin(btn) {
                 const full_name = document.getElementById('bsName').value.trim();
                 const email = document.getElementById('bsEmail').value.trim();
                 const password = document.getElementById('bsPassword').value;
                 if (!full_name || !email || !password) return showAuthError('Semua field wajib diisi.');
+                if (!setButtonLoading(btn, 'Memproses...')) return;
 
                 try {
                     const res = await fetch('/api/v1/auth/bootstrap', {
@@ -1503,6 +1513,8 @@ def admin_dashboard_page():
                     document.getElementById('loginEmail').value = email;
                 } catch(e) {
                     showAuthError(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -1517,10 +1529,11 @@ def admin_dashboard_page():
                 localStorage.setItem('omron_dept', currentDept);
             }
 
-            async function login() {
+            async function login(btn) {
                 const email = document.getElementById('loginEmail').value.trim();
                 const password = document.getElementById('loginPassword').value;
                 if (!email || !password) return showAuthError('Email dan password wajib diisi.');
+                if (!setButtonLoading(btn, 'Memproses...')) return;
 
                 try {
                     const res = await fetch('/api/v1/auth/login', {
@@ -1548,13 +1561,16 @@ def admin_dashboard_page():
                     await enterDashboard();
                 } catch(e) {
                     showAuthError(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
-            async function verifyOtp() {
+            async function verifyOtp(btn) {
                 const code = document.getElementById('otpCode').value.trim();
                 if (!code || code.length !== 6) return showAuthError('Kode OTP harus 6 digit.');
                 if (!pendingOtpToken) return cancelOtpFlow();
+                if (!setButtonLoading(btn, 'Memverifikasi...')) return;
 
                 try {
                     const res = await fetch('/api/v1/auth/verify-otp', {
@@ -1570,11 +1586,16 @@ def admin_dashboard_page():
                     await enterDashboard();
                 } catch(e) {
                     showAuthError(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
+            let otpResendInFlight = false;
             async function resendOtp() {
                 if (!pendingOtpToken) return cancelOtpFlow();
+                if (otpResendInFlight) return; // cegah klik ganda pada link ini
+                otpResendInFlight = true;
                 const link = document.getElementById('otpResendLink');
                 const originalText = link.innerText;
                 link.innerText = 'Mengirim...';
@@ -1591,6 +1612,7 @@ def admin_dashboard_page():
                     showAuthError(e.message);
                 } finally {
                     link.innerText = originalText;
+                    otpResendInFlight = false;
                 }
             }
 
@@ -2171,6 +2193,26 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 });
             }
 
+            // Cegah klik ganda pada tombol simpan/kirim - kalau ada jeda jaringan
+            // dan user klik lagi sebelum request pertama selesai, data bisa
+            // tersimpan/terkirim DUA KALI (tiket dobel, OTP terkirim 2x, dst).
+            // Dipakai di SEMUA tombol yang menyimpan/membuat/mengubah data.
+            function setButtonLoading(btn, loadingText) {
+                if (!btn || btn.disabled) return false; // sudah loading - klik ini diabaikan
+                btn.dataset.originalHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = `<span class="spinner"></span> ${loadingText || 'Memproses...'}`;
+                return true;
+            }
+            function restoreButton(btn) {
+                if (!btn) return;
+                btn.disabled = false;
+                if (btn.dataset.originalHtml !== undefined) {
+                    btn.innerHTML = btn.dataset.originalHtml;
+                    delete btn.dataset.originalHtml;
+                }
+            }
+
             // Escape HTML untuk SEMUA data yang berasal dari database sebelum dimasukkan
             // ke innerHTML - mencegah stored XSS (mis. dari form publik /pickup-intake
             // yang tidak butuh login, atau input customer_name/complaint di form tiket).
@@ -2198,10 +2240,12 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 // jadi TIDAK ADA LAGI risiko membaca data sisa dari form lokasi lain
                 // yang sebelumnya pernah dibuka (bug id duplikat pada versi lama).
                 const k = locKey;
+                const btn = document.getElementById(`ticketFormSaveBtn-${k}`);
                 const name = valOf(`inpName-${k}`);
                 const phone1 = valOf(`inpPhone1-${k}`);
 
                 if (!name || !phone1) return alert('Nama Customer dan No. HP/WhatsApp 1 Wajib Diisi!');
+                if (!setButtonLoading(btn, 'Menyimpan...')) return; // cegah klik ganda -> tiket/data dobel
 
                 const spareparts = [1, 2, 3].map(n => ({
                     name: valOf(`inpSpName${n}-${k}`) || null,
@@ -2274,6 +2318,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     }
                 } catch(e) {
                     alert('Error koneksi: ' + e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -2350,6 +2396,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const isEditing = !!editingId;
                 const role = document.getElementById('nuRole').value;
                 const password = document.getElementById('nuPassword').value;
+                const btn = document.getElementById('userSaveBtn');
 
                 const payload = {
                     full_name: document.getElementById('nuName').value.trim(),
@@ -2361,6 +2408,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                 if (!payload.full_name || !payload.email) return alert('Nama dan Email wajib diisi.');
                 if (!isEditing && !password) return alert('Password wajib diisi utk user baru.');
+                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
                 const url = isEditing ? `/api/v1/admin/users/${editingId}` : '/api/v1/admin/users/';
                 const method = isEditing ? 'PUT' : 'POST';
@@ -2378,6 +2426,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderUsers();
                 } catch(e) {
                     alert(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -2421,6 +2471,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const category = document.getElementById('dmCategory').value;
                 const model_name = document.getElementById('dmModelName').value.trim();
                 if (!model_name) return alert('Nama Model wajib diisi.');
+                const btn = document.getElementById('deviceModelSaveBtn');
+                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
                 try {
                     const res = await authFetch('/api/v1/device-models/', {
@@ -2434,6 +2486,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderDeviceModels();
                 } catch(e) {
                     alert(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -2522,6 +2576,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const name = valOf('branchName');
                 const code = valOf('branchCode');
                 if (!name || !code) return alert('Nama Cabang dan Kode Store wajib diisi.');
+                const btn = document.getElementById('branchSaveBtn');
+                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
                 const payload = {
                     name, code,
@@ -2543,6 +2599,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderBranches();
                 } catch(e) {
                     alert(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -2637,6 +2695,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const code = valOf('pickupCode');
                 const name = valOf('pickupName');
                 if (!code || !name) return alert('Store Long Code dan Store Name wajib diisi.');
+                const btn = document.getElementById('pickupSaveBtn');
+                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
                 const payload = {
                     store_long_code: code, store_name: name,
@@ -2657,6 +2717,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderPickupCenters();
                 } catch(e) {
                     alert(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -2834,7 +2896,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 </div>
                                 <div style="display:flex; gap:10px; justify-content:flex-end;">
                                     <button class="btn btn-secondary" onclick="closeMovementForm('${loc}')">Batal</button>
-                                    <button class="btn btn-success" onclick="submitMovement('${loc}')">Simpan</button>
+                                    <button class="btn btn-success" id="invMovementSaveBtn-${loc}" onclick="submitMovement('${loc}')">Simpan</button>
                                 </div>
                             </div>
 
@@ -2848,7 +2910,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 </div>
                                 <div style="display:flex; gap:10px; justify-content:flex-end;">
                                     <button class="btn btn-secondary" onclick="toggleOpnameForm('${loc}')">Batal</button>
-                                    <button class="btn btn-warning" onclick="submitOpname('${loc}')">Simpan Stok Opname</button>
+                                    <button class="btn btn-warning" id="invOpnameSaveBtn-${loc}" onclick="submitOpname('${loc}')">Simpan Stok Opname</button>
                                 </div>
                             </div>
 
@@ -2951,7 +3013,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                     <label for="pdPpnFree-${loc}" style="margin-bottom:0; font-weight:normal; font-size:13px;">Bebas PPN (0%) untuk transaksi ini</label>
                                 </div>
 
-                                <button class="btn btn-success" onclick="savePaymentInfo('${loc}')">💾 Simpan Info Pembayaran</button>
+                                <button class="btn btn-success" id="paymentInfoSaveBtn-${loc}" onclick="savePaymentInfo('${loc}')">💾 Simpan Info Pembayaran</button>
 
                                 <hr style="margin:15px 0; border:none; border-top:1px solid #eee;">
 
@@ -3202,6 +3264,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
             async function savePaymentInfo(loc) {
                 const ticketNumber = currentPaymentTicket[loc];
                 if (!ticketNumber) return;
+                const btn = document.getElementById(`paymentInfoSaveBtn-${loc}`);
+                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
                 const items = [];
                 document.querySelectorAll(`#pdItemsContainer-${loc} .item-row`).forEach(row => {
@@ -3248,6 +3312,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderTableData('payment-' + loc);
                 } catch(e) {
                     alert(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -3392,6 +3458,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (branchFieldLabel && !relatedBranch) {
                     return alert(`${branchFieldLabel} wajib dipilih untuk pergerakan ini.`);
                 }
+                const btn = document.getElementById(`invMovementSaveBtn-${loc}`);
+                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
                 const payload = {
                     location: loc,
@@ -3418,6 +3486,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderInventoryStock(loc);
                 } catch(e) {
                     alert(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
@@ -3425,6 +3495,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const code = valOf(`invOpCode-${loc}`);
                 const qty = valOf(`invOpQty-${loc}`);
                 if (!code || qty === '') return alert('Kode Sparepart dan Jumlah Hasil Hitung Fisik wajib diisi.');
+                const btn = document.getElementById(`invOpnameSaveBtn-${loc}`);
+                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
                 const payload = {
                     location: loc,
@@ -3447,6 +3519,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     renderInventoryStock(loc);
                 } catch(e) {
                     alert(e.message);
+                } finally {
+                    restoreButton(btn);
                 }
             }
 
