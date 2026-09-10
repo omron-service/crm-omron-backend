@@ -1248,7 +1248,30 @@ def admin_dashboard_page():
             }
 
             function toggleSubmenu(id) {
-                document.getElementById(id).classList.toggle('open');
+                const target = document.getElementById(id);
+                const willOpen = !target.classList.contains('open');
+                // Tutup SEMUA submenu lain dulu - hanya satu submenu yang boleh
+                // terbuka di satu waktu, supaya tidak ada 2+ submenu "nyangkut"
+                // terbuka bersamaan seperti yang dilaporkan.
+                document.querySelectorAll('aside .submenu').forEach(el => el.classList.remove('open'));
+                if (willOpen) target.classList.add('open');
+            }
+
+            // Pemetaan tabId -> id submenu induknya, dipakai supaya begitu suatu
+            // halaman ditampilkan (showTab), submenu yang BENAR ikut terbuka dan
+            // submenu lain otomatis tertutup - konsisten baik dibuka lewat klik
+            // judul menu MAUPUN lewat klik link di dalam submenu.
+            const SUBMENU_FOR_TAB_PREFIX = [
+                { prefix: 'service-', submenuId: 'sub-service' },
+                { prefix: 'payment-', submenuId: 'sub-payment' },
+                { prefix: 'inventory-', submenuId: 'sub-inventory' },
+                { prefix: 'laporan-', submenuId: 'sub-laporan' },
+                { prefix: 'setting-', submenuId: 'sub-setting' },
+            ];
+            function openSubmenuForTab(tabId) {
+                const match = SUBMENU_FOR_TAB_PREFIX.find(m => tabId.startsWith(m.prefix));
+                document.querySelectorAll('aside .submenu').forEach(el => el.classList.remove('open'));
+                if (match) document.getElementById(match.submenuId).classList.add('open');
             }
 
             // ---------- DATA REFERENSI (statis, tidak perlu API) ----------
@@ -1477,6 +1500,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const target = document.getElementById('tab-' + tabId);
                 if (target) target.classList.remove('hidden');
                 document.getElementById('pageTitle').innerText = 'Menu: ' + tabId.toUpperCase().replace(/-/g, ' ');
+                openSubmenuForTab(tabId);
 
                 if (tabId.startsWith('service-')) hideFormInPage(tabId.replace('service-', ''));
                 if (tabId === 'setting-users') { renderUsers(); return; }
