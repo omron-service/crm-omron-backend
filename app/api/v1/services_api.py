@@ -288,8 +288,8 @@ def get_all_tickets(
 ):
     try:
         query = db.query(ServiceTicket).options(joinedload(ServiceTicket.spareparts))
-        # Staff hanya melihat data departemennya sendiri. Superadmin melihat semua.
-        if current_user.role != "superadmin":
+        # Staff hanya melihat data departemennya sendiri. Superadmin & Admin melihat semua.
+        if current_user.role not in ("superadmin", "admin"):
             query = query.filter(func.lower(ServiceTicket.service_type) == current_user.department)
         return query.order_by(desc(ServiceTicket.id)).all()
     except Exception as e:
