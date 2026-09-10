@@ -1,44 +1,52 @@
 """
-Pengiriman email OTP lewat Gmail SMTP - dipakai khusus 2FA login Super Admin.
+Pengiriman email OTP lewat Resend API - dipakai khusus 2FA login Super Admin.
+
+KENAPA BUKAN GMAIL SMTP LAGI: Railway (hosting server ini) memblokir SEMUA
+koneksi SMTP keluar (port 25/465/587) di level platform, sebagai kebijakan
+anti-spam mereka - ini dikonfirmasi resmi oleh tim Railway sendiri, BUKAN
+bug di kode ini. Gmail SMTP TIDAK AKAN PERNAH bisa jalan dari Railway, apa
+pun yang diperbaiki di kode. Solusinya: pakai layanan email yang punya
+HTTPS API (bukan SMTP) - Railway sendiri merekomendasikan Resend.
 
 KREDENSIAL YANG DIBUTUHKAN (environment variables di Railway):
-- GMAIL_ADDRESS       : alamat Gmail pengirim, mis. cs.omronservice@gmail.com
-- GMAIL_APP_PASSWORD  : App Password 16 digit dari Google (BUKAN password
-                         login Gmail biasa) - lihat panduan pembuatan di
-                         PANDUAN_OTP_EMAIL.md.
+- RESEND_API_KEY   : API key dari resend.com (gratis, tanpa kartu kredit)
+- RESEND_FROM_EMAIL: opsional - default "onboarding@resend.dev" (alamat
+                      pengirim bawaan Resend, bisa dipakai tanpa verifikasi
+                      domain).
 
-Kalau kedua variable ini belum diisi, fungsi ini akan melempar DokuConfigError
--gaya (OtpEmailConfigError) dengan pesan jelas - endpoint login akan menolak
-proses OTP dengan pesan yang bisa dipahami admin, BUKAN error mentah/500.
+CATATAN PENTING soal batasan tier gratis Resend TANPA verifikasi domain:
+email HANYA bisa dikirim ke alamat yang SAMA dengan email pendaftaran akun
+Resend Anda. Jadi daftar Resend pakai email Super Admin yang login di
+sistem ini, supaya OTP-nya benar-benar sampai. Kalau nanti ada Super Admin
+lain dengan email berbeda, perlu verifikasi domain di Resend dulu (butuh
+domain sendiri - sama seperti prasyarat Opsi 3 Cloudflare sebelumnya).
 """
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 
 
 class OtpEmailConfigError(Exception):
-    """Kredensial Gmail belum diisi di server."""
+    """Kredensial Resend belum diisi di server."""
     pass
 
 
 class OtpEmailSendError(Exception):
-    """Kredensial ada, tapi pengiriman ke Gmail gagal (mis. App Password salah)."""
+    """Kredensial ada, tapi pengiriman ke Resend gagal (mis. API key salah,
+    atau email tujuan bukan email pendaftaran akun Resend - lihat catatan
+    di atas soal batasan tier gratis tanpa verifikasi domain)."""
     pass
 
 
 def send_otp_email(to_email: str, otp_code: str, full_name: str):
-    gmail_address = os.environ.get("GMAIL_ADDRESS", "").strip()
-    gmail_app_password = os.environ.get("GMAIL_APP_PASSWORD", "").strip()
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    from_email = os.environ.get("RESEND_FROM_EMAIL", "onboarding@resend.dev").strip()
 
-    if not gmail_address or not gmail_app_password:
+    if not api_key:
         raise OtpEmailConfigError(
-            "Kredensial pengirim email belum diatur di server (GMAIL_ADDRESS / "
-            "GMAIL_APP_PASSWORD belum diisi di Environment Variables Railway). "
-            "Hubungi admin sistem."
+            "Kredensial pengirim email belum diatur di server (RESEND_API_KEY "
+            "belum diisi di Environment Variables Railway). Hubungi admin sistem."
         )
 
-    subject = "Kode OTP Login - CRM Omron Service"
     body_text = (
         f"Halo {full_name},\n\n"
         f"Kode OTP login Anda: {otp_code}\n\n"
@@ -48,21 +56,27 @@ def send_otp_email(to_email: str, otp_code: str, full_name: str):
         f"hubungi admin sistem - ada kemungkinan seseorang mencoba masuk ke akun Anda."
     )
 
-    msg = MIMEMultipart()
-    msg["From"] = gmail_address
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body_text, "plain"))
-
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
-            server.starttls()
-            server.login(gmail_address, gmail_app_password)
-            server.sendmail(gmail_address, [to_email], msg.as_string())
-    except smtplib.SMTPAuthenticationError:
-        raise OtpEmailSendError(
-            "Gagal login ke Gmail - App Password kemungkinan salah atau sudah dicabut. "
-            "Buat App Password baru dan update GMAIL_APP_PASSWORD di Railway."
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "from": f"CRM Omron Service <{from_email}>",
+                "to": [to_email],
+                "subject": "Kode OTP Login - CRM Omron Service",
+                "text": body_text,
+            },
+            timeout=15,
         )
-    except Exception as e:
-        raise OtpEmailSendError(f"Gagal mengirim email OTP: {str(e)}")
+    except requests.RequestException as e:
+        raise OtpEmailSendError(f"Gagal menghubungi server Resend: {str(e)}")
+
+    if resp.status_code not in (200, 201):
+        detail = resp.text[:300]
+        raise OtpEmailSendError(
+            f"Resend menolak pengiriman (HTTP {resp.status_code}): {detail}. "
+            f"Kalau pesannya soal 'domain not verified' atau penerima ditolak, "
+            f"ingat: tanpa verifikasi domain, Resend HANYA bisa kirim ke email "
+            f"yang sama dengan email pendaftaran akun Resend Anda."
+        )
+
