@@ -48,7 +48,13 @@ class ServiceTicket(Base):
     device_model = Column(String(100), nullable=False)
     serial_number = Column(String(50), nullable=True)
     accessories = Column(String(150), nullable=True)
-    warranty_status = Column(String(30), default="Out of Warranty")
+    # PENTING: SENGAJA tanpa default="Out of Warranty" di sini. Kalau kolom
+    # punya default, SQLAlchemy akan menerapkannya SETIAP KALI nilainya None
+    # saat insert - bahkan kalau kita SENGAJA set None secara eksplisit (mis.
+    # tiket dari web form Pickup Center yang statusnya memang belum diketahui).
+    # Nilai default "Out of Warranty" untuk tiket biasa tetap dijamin lewat
+    # skema Pydantic (TicketCreate) di services_api.py, bukan di level kolom ini.
+    warranty_status = Column(String(30), nullable=True)
     warranty_period = Column(String(20), nullable=True)
     product_origin = Column(String(50), nullable=True)
 
