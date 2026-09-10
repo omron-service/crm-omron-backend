@@ -232,7 +232,14 @@ def pickup_intake_create(request: Request, data: PickupIntakeCreate, db: Session
             serial_number=data.serial_number or "-",
             accessories=data.accessories,
             complaint=data.complaint or "-",
-            status="Diterima",
+            # SENGAJA dikosongkan (bukan default kolom "Out of Warranty") - status
+            # garansi belum diketahui saat drop-off, biar tim Teknisi yang
+            # menentukan & mengisi sendiri saat tiket ini nanti diedit.
+            warranty_status=None,
+            # Status awal alur Pickup Center - selanjutnya diupdate manual oleh
+            # tim Teknisi, atau (rencana ke depan) otomatis dari integrasi API
+            # sistem tracking jasa kirim GED.
+            status="Diterima di PKP",
         )
         db.add(db_ticket)
         db.commit()
@@ -1161,7 +1168,10 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 <div class="form-group"><label>Aksesoris</label><input id="inpAccessories-${k}" placeholder="Contoh: Kabel, Adaptor"></div>
                                 <div class="form-group">
                                     <label>Status Garansi</label>
-                                    <select id="inpWarrantyStatus-${k}">${opts(WARRANTY_STATUS_OPTIONS, 'Out of Warranty')}</select>
+                                    <select id="inpWarrantyStatus-${k}">
+                                        <option value="">-- Belum Dipilih --</option>
+                                        ${opts(WARRANTY_STATUS_OPTIONS, k === 'pickup' ? '' : 'Out of Warranty')}
+                                    </select>
                                 </div>
                                 <div class="form-group">
                                     <label>Warranty Period (tahun)</label>
@@ -1453,7 +1463,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                 setVal(`inpSN-${k}`, t.serial_number || '');
                 setVal(`inpAccessories-${k}`, t.accessories || '');
-                setVal(`inpWarrantyStatus-${k}`, t.warranty_status || 'Out of Warranty');
+                setVal(`inpWarrantyStatus-${k}`, t.warranty_status || '');
                 setVal(`inpWarrantyPeriod-${k}`, t.warranty_period || '');
                 setVal(`inpOrigin-${k}`, t.product_origin || '');
 
@@ -1535,7 +1545,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                 setVal(`inpSN-${k}`, '');
                 setVal(`inpAccessories-${k}`, '');
-                setVal(`inpWarrantyStatus-${k}`, 'Out of Warranty');
+                setVal(`inpWarrantyStatus-${k}`, k === 'pickup' ? '' : 'Out of Warranty');
                 setVal(`inpWarrantyPeriod-${k}`, '');
                 setVal(`inpOrigin-${k}`, '');
 
@@ -1614,7 +1624,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     device_model: valOf(`inpModel-${k}`) || '-',
                     serial_number: valOf(`inpSN-${k}`) || '-',
                     accessories: valOf(`inpAccessories-${k}`) || null,
-                    warranty_status: valOf(`inpWarrantyStatus-${k}`) || 'Out of Warranty',
+                    warranty_status: valOf(`inpWarrantyStatus-${k}`) || null,
                     warranty_period: valOf(`inpWarrantyPeriod-${k}`) || null,
                     product_origin: valOf(`inpOrigin-${k}`) || null,
                     complaint: valOf(`inpKeluhan-${k}`) || '-',
