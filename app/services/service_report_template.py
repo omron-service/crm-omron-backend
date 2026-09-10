@@ -18,6 +18,23 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "assets")
 LOGO_PATH = os.path.join(ASSETS_DIR, "omron_logo.png")
 BANNER_PATH = os.path.join(ASSETS_DIR, "omron_healthcare_banner.png")
 
+
+def _mask_phone(phone: Optional[str]) -> str:
+    """
+    Sensor nomor HP/WA untuk file Service Report yang di-download - 4 digit
+    awal dan 2 digit akhir tetap tampil, sisanya diganti 'x'.
+    Contoh: 081212345678 -> 0812xxxxxx78
+    """
+    if not phone:
+        return "-"
+    digits_only = phone.strip()
+    if len(digits_only) <= 6:
+        return digits_only  # terlalu pendek utk disensor tanpa jadi tidak berguna
+    prefix = digits_only[:4]
+    suffix = digits_only[-2:]
+    masked_len = len(digits_only) - 4 - 2
+    return f"{prefix}{'x' * masked_len}{suffix}"
+
 HEADER_FILL = PatternFill(start_color="FFF6F8FC", end_color="FFF6F8FC", fill_type="solid")
 THIN = Side(style="thin", color="000000")
 BOX = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
@@ -154,7 +171,7 @@ def generate_ticket_service_report(ticket, spareparts: Optional[Iterable] = None
     _block(ws, "B9", "TANGGAL SELESAI", fill=HEADER_FILL, align=ALIGN_LEFT)
     _block(ws, "C9", _fmt_date(ticket.completed_date), align=ALIGN_CENTER)
     _block(ws, "D9", "NO. TELEPON", fill=HEADER_FILL, align=ALIGN_LEFT)
-    _block(ws, "E9:F9", ticket.customer_phone or "-", align=ALIGN_CENTER)
+    _block(ws, "E9:F9", _mask_phone(ticket.customer_phone), align=ALIGN_CENTER)
 
     _block(ws, "B10", "ALAMAT", fill=HEADER_FILL, align=ALIGN_LEFT)
     _block(ws, "C10:F10", ticket.customer_address or "-", align=ALIGN_LEFT)
