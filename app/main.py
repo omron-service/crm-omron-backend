@@ -288,7 +288,11 @@ def pickup_intake_page():
 
                 <form id="intakeForm">
                     <div class="form-group"><label>Nama Customer <span class="required">*</span></label><input id="pName" required></div>
-                    <div class="form-group"><label>Nama Instansi</label><input id="pInstansi"></div>
+                    <div class="form-group">
+                        <label>Nama Instansi</label>
+                        <input id="pInstansi" list="pInstansiList" placeholder="Ketik atau pilih dari daftar Pickup Center aktif">
+                        <datalist id="pInstansiList"></datalist>
+                    </div>
                     <div class="form-group"><label>No. HP / WhatsApp 1 <span class="required">*</span></label><input id="pPhone1" required placeholder="081234567890"></div>
                     <div class="form-group"><label>No. HP / WhatsApp 2</label><input id="pPhone2" placeholder="(opsional)"></div>
                     <div class="form-group"><label>Alamat</label><input id="pAddress"></div>
@@ -326,6 +330,17 @@ def pickup_intake_page():
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;');
             }
+
+            async function loadInstansiOptions() {
+                try {
+                    const res = await fetch('/api/v1/pickup-centers/public');
+                    if (!res.ok) return;
+                    const list = await res.json();
+                    document.getElementById('pInstansiList').innerHTML =
+                        list.map(p => `<option value="${esc(p.store_name)}">`).join('');
+                } catch(e) { /* diamkan - form tetap bisa diisi manual kalau daftar gagal dimuat */ }
+            }
+            loadInstansiOptions();
 
             async function onCategoryChange() {
                 const category = document.getElementById('pCategory').value;
@@ -1057,6 +1072,13 @@ def admin_dashboard_page():
             const WARRANTY_PERIOD_OPTIONS = ["1","2","3","4","5","6"];
             const REMARKS_OPTIONS = ["Compliance Check/Sensor Check","Repair","Replace Product/Claim","Unrepairable/Return to Customer","Disagree with Service Fee","No Response"];
             const REPAIR_STATUS_OPTIONS = ["Diterima","Diproses","Selesai/Dikirim","Selesai Diambil","Menunggu Sparepart"];
+            const PICKUP_REPAIR_STATUS_OPTIONS = [
+                "Diterima di PKP", "Diteruskan ke Omron", "Diterima di Omron", "Diproses di Omron",
+                "Selesai/Dikirim balik ke PKP", "Diterima kembali di PKP", "Menunggu Sparepart",
+            ];
+            function repairStatusOptionsFor(locKey) {
+                return locKey === 'pickup' ? PICKUP_REPAIR_STATUS_OPTIONS : REPAIR_STATUS_OPTIONS;
+            }
 const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sabang", "Meulaboh", "Aceh Besar", "Aceh Utara", "Aceh Tengah"], "Sumatera Utara": ["Medan", "Binjai", "Pematangsiantar", "Tebing Tinggi", "Sibolga", "Tanjungbalai", "Padang Sidempuan", "Deli Serdang", "Karo"], "Sumatera Barat": ["Padang", "Bukittinggi", "Padang Panjang", "Payakumbuh", "Sawahlunto", "Solok", "Pariaman", "Agam"], "Riau": ["Pekanbaru", "Dumai", "Kampar", "Bengkalis", "Indragiri Hulu", "Indragiri Hilir", "Rokan Hulu", "Rokan Hilir"], "Kepulauan Riau": ["Batam", "Tanjungpinang", "Bintan", "Karimun", "Natuna", "Lingga"], "Jambi": ["Jambi", "Sungai Penuh", "Batanghari", "Bungo", "Kerinci", "Merangin", "Muaro Jambi"], "Sumatera Selatan": ["Palembang", "Lubuklinggau", "Pagar Alam", "Prabumulih", "Ogan Komering Ilir", "Ogan Komering Ulu", "Musi Banyuasin", "Musi Rawas"], "Bangka Belitung": ["Pangkal Pinang", "Bangka", "Bangka Barat", "Bangka Tengah", "Bangka Selatan", "Belitung", "Belitung Timur"], "Bengkulu": ["Bengkulu", "Rejang Lebong", "Bengkulu Utara", "Bengkulu Selatan", "Kepahiang", "Kaur"], "Lampung": ["Bandar Lampung", "Metro", "Lampung Selatan", "Lampung Tengah", "Lampung Utara", "Lampung Timur", "Tulang Bawang", "Pesawaran"], "DKI Jakarta": ["Jakarta Pusat", "Jakarta Utara", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Kepulauan Seribu"], "Jawa Barat": ["Bandung", "Bekasi", "Bogor", "Depok", "Cimahi", "Sukabumi", "Tasikmalaya", "Cirebon", "Banjar", "Karawang", "Purwakarta", "Subang", "Garut", "Ciamis"], "Banten": ["Serang", "Tangerang", "Tangerang Selatan", "Cilegon", "Pandeglang", "Lebak"], "Jawa Tengah": ["Semarang", "Surakarta", "Salatiga", "Magelang", "Pekalongan", "Tegal", "Purwokerto", "Kudus", "Klaten", "Sukoharjo", "Boyolali", "Sragen", "Cilacap"], "DI Yogyakarta": ["Yogyakarta", "Sleman", "Bantul", "Kulon Progo", "Gunungkidul"], "Jawa Timur": ["Surabaya", "Malang", "Kediri", "Madiun", "Blitar", "Mojokerto", "Pasuruan", "Probolinggo", "Batu", "Sidoarjo", "Gresik", "Jember", "Banyuwangi", "Tuban"], "Bali": ["Denpasar", "Badung", "Gianyar", "Tabanan", "Buleleng", "Karangasem", "Klungkung", "Bangli", "Jembrana"], "Nusa Tenggara Barat": ["Mataram", "Bima", "Lombok Barat", "Lombok Tengah", "Lombok Timur", "Lombok Utara", "Sumbawa", "Dompu"], "Nusa Tenggara Timur": ["Kupang", "Ende", "Maumere", "Manggarai", "Manggarai Barat", "Sumba Timur", "Sumba Barat", "Timor Tengah Selatan"], "Kalimantan Barat": ["Pontianak", "Singkawang", "Sambas", "Kubu Raya", "Ketapang", "Sanggau", "Sintang"], "Kalimantan Tengah": ["Palangka Raya", "Kotawaringin Barat", "Kotawaringin Timur", "Kapuas", "Barito Utara", "Barito Selatan"], "Kalimantan Selatan": ["Banjarmasin", "Banjarbaru", "Banjar", "Barito Kuala", "Tanah Laut", "Hulu Sungai Utara", "Hulu Sungai Selatan"], "Kalimantan Timur": ["Samarinda", "Balikpapan", "Bontang", "Kutai Kartanegara", "Kutai Timur", "Kutai Barat", "Berau", "Paser"], "Kalimantan Utara": ["Tarakan", "Bulungan", "Malinau", "Nunukan", "Tana Tidung"], "Sulawesi Utara": ["Manado", "Bitung", "Tomohon", "Kotamobagu", "Minahasa", "Minahasa Utara", "Minahasa Selatan"], "Gorontalo": ["Gorontalo", "Boalemo", "Bone Bolango", "Gorontalo Utara", "Pohuwato"], "Sulawesi Tengah": ["Palu", "Poso", "Banggai", "Donggala", "Toli-Toli", "Parigi Moutong", "Morowali"], "Sulawesi Barat": ["Mamuju", "Majene", "Polewali Mandar", "Mamasa", "Pasangkayu"], "Sulawesi Selatan": ["Makassar", "Parepare", "Palopo", "Gowa", "Maros", "Bone", "Bulukumba", "Pinrang", "Wajo", "Sidenreng Rappang"], "Sulawesi Tenggara": ["Kendari", "Baubau", "Kolaka", "Konawe", "Muna", "Bombana", "Wakatobi"], "Maluku": ["Ambon", "Tual", "Maluku Tengah", "Maluku Tenggara", "Buru", "Seram Bagian Barat"], "Maluku Utara": ["Ternate", "Tidore Kepulauan", "Halmahera Barat", "Halmahera Utara", "Halmahera Tengah", "Halmahera Selatan"], "Papua": ["Jayapura", "Keerom", "Sarmi", "Biak Numfor", "Jayawijaya", "Nabire", "Mimika", "Merauke"], "Papua Barat": ["Manokwari", "Sorong", "Fakfak", "Kaimana", "Teluk Bintuni", "Teluk Wondama", "Raja Ampat"], "Papua Barat Daya": ["Sorong", "Sorong Selatan", "Tambrauw", "Maybrat", "Raja Ampat"], "Papua Tengah": ["Nabire", "Paniai", "Mimika", "Puncak", "Puncak Jaya", "Dogiyai", "Deiyai"], "Papua Pegunungan": ["Jayawijaya", "Pegunungan Bintang", "Yahukimo", "Tolikara", "Yalimo", "Lanny Jaya", "Nduga"], "Papua Selatan": ["Merauke", "Boven Digoel", "Mappi", "Asmat"]};
 
             function opts(list, selected) {
@@ -1081,7 +1103,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                             </div>
                             <table>
                                 <thead>
-                                    <tr><th>No. Tiket</th><th>Pemilik</th><th>Instansi</th><th>No. HP/WA</th><th>Model Alat</th><th>Serial No.</th><th>Garansi</th><th>Keluhan</th><th>Status</th><th>Tgl Diterima</th><th>Aksi</th></tr>
+                                    <tr><th>No. Tiket</th><th>Pemilik</th><th>Instansi</th><th>Model Alat</th><th>Serial No.</th><th>Garansi</th><th>Keluhan</th><th>Status</th><th>Tgl Diterima</th><th>Aksi</th></tr>
                                 </thead>
                                 <tbody id="tableService-${k}"></tbody>
                             </table>
@@ -1099,7 +1121,11 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                             <div class="form-section-title">1. Data Pelanggan</div>
                             <div class="form-grid">
                                 <div class="form-group"><label>Nama Customer <span class="required">*</span></label><input id="inpName-${k}" placeholder="Contoh: Budi Santoso"></div>
-                                <div class="form-group"><label>Nama Instansi</label><input id="inpInstansi-${k}" placeholder="Contoh: RS Harapan Bunda"></div>
+                                <div class="form-group">
+                                    <label>Nama Instansi</label>
+                                    <input id="inpInstansi-${k}" placeholder="Contoh: RS Harapan Bunda" ${k === 'pickup' ? 'list="inpInstansiList-pickup"' : ''}>
+                                    ${k === 'pickup' ? '<datalist id="inpInstansiList-pickup"></datalist>' : ''}
+                                </div>
                                 <div class="form-group"><label>No. HP / WhatsApp 1 <span class="required">*</span></label><input id="inpPhone1-${k}" placeholder="081234567890"></div>
                                 <div class="form-group"><label>No. HP / WhatsApp 2</label><input id="inpPhone2-${k}" placeholder="(opsional)"></div>
                                 <div class="form-group" style="grid-column: 1 / -1;"><label>Alamat</label><input id="inpAddress-${k}" placeholder="Alamat lengkap"></div>
@@ -1168,7 +1194,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 </div>
                                 <div class="form-group">
                                     <label>Repair Status</label>
-                                    <select id="inpStatus-${k}">${opts(REPAIR_STATUS_OPTIONS, 'Diterima')}</select>
+                                    <select id="inpStatus-${k}">${opts(repairStatusOptionsFor(k), k === 'pickup' ? 'Diterima di PKP' : 'Diterima')}</select>
                                 </div>
                                 <div class="form-group" style="grid-column: 1 / -1;"><label>Catatan</label><input id="inpNotes-${k}" placeholder="Catatan tambahan"></div>
                             </div>
@@ -1310,7 +1336,6 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                         <td><a href="#" onclick="openEditTicket('${esc(d.ticket_number)}', '${locKey}'); return false;" style="font-weight:bold; text-decoration:underline; color:#0056b3; cursor:pointer;" title="Klik untuk buka/edit tiket">${esc(d.ticket_number)}</a></td>
                         <td>${esc(d.customer_name)}</td>
                         <td>${esc(d.instansi_name) || '-'}</td>
-                        <td>${esc(d.customer_phone) || '-'}</td>
                         <td>${esc(d.device_model)}</td>
                         <td>${esc(d.serial_number) || '-'}</td>
                         <td>${esc(d.warranty_status) || 'Out of Warranty'}</td>
@@ -1351,6 +1376,19 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
             let currentEditingTicket = {}; // { [locKey]: null | "JKT-2600001" }
 
+            let pickupInstansiOptionsLoaded = false;
+            async function loadPickupInstansiOptions() {
+                if (pickupInstansiOptionsLoaded) return;
+                try {
+                    const res = await authFetch('/api/v1/pickup-centers/');
+                    if (!res.ok) return;
+                    const list = await res.json();
+                    document.getElementById('inpInstansiList-pickup').innerHTML =
+                        list.map(p => `<option value="${esc(p.store_name)}">`).join('');
+                    pickupInstansiOptionsLoaded = true;
+                } catch(e) { /* diamkan - field tetap bisa diisi manual */ }
+            }
+
             function showFormInPage(locKey) {
                 currentEditingTicket[locKey] = null; // mode CREATE (bukan edit)
                 resetTicketForm(locKey);
@@ -1361,6 +1399,8 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 document.getElementById(`ticketFormSaveBtn-${locKey}`).innerText =
                     `Simpan ke Data ${loc.label.toUpperCase()}`;
 
+                if (locKey === 'pickup') loadPickupInstansiOptions();
+
                 document.getElementById('view-table-service-' + locKey).classList.add('hidden');
                 document.getElementById('view-form-service-' + locKey).classList.remove('hidden');
             }
@@ -1370,6 +1410,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 // sudah ada ke form yang sama, lalu form disimpan lewat PUT (update),
                 // bukan POST (create baru).
                 try {
+                    if (locKey === 'pickup') loadPickupInstansiOptions();
                     const res = await authFetch(`/api/v1/db/tickets/detail/${encodeURIComponent(ticketNumber)}`);
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
@@ -1421,7 +1462,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 setVal(`inpSymptom-${k}`, t.symptom_code || '');
                 setVal(`inpLeadtime-${k}`, t.leadtime_days != null ? t.leadtime_days : 1);
                 setVal(`inpRemarks-${k}`, t.remarks || '');
-                setVal(`inpStatus-${k}`, t.status || 'Diterima');
+                setVal(`inpStatus-${k}`, t.status || (k === 'pickup' ? 'Diterima di PKP' : 'Diterima'));
                 setVal(`inpNotes-${k}`, t.notes || '');
 
                 const spareparts = t.spareparts || [];
@@ -1503,7 +1544,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 setVal(`inpSymptom-${k}`, '');
                 setVal(`inpLeadtime-${k}`, '1');
                 setVal(`inpRemarks-${k}`, '');
-                setVal(`inpStatus-${k}`, 'Diterima');
+                setVal(`inpStatus-${k}`, k === 'pickup' ? 'Diterima di PKP' : 'Diterima');
                 setVal(`inpNotes-${k}`, '');
 
                 [1, 2, 3].forEach(n => {
