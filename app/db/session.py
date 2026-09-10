@@ -39,6 +39,42 @@ def get_db():
         db.close()
 
 
+# ---- KHUSUS ENDPOINT PUBLIK (/pickup-intake, /track) - Opsi 2 pengamanan ----
+# Kalau PUBLIC_DATABASE_URL diisi (connection string user database yang HAK
+# AKSESNYA DIBATASI - lihat sql_setup_public_db_user.sql), endpoint publik
+# akan pakai koneksi itu, BUKAN koneksi utama yang penuh akses. Jadi kalau
+# suatu saat ada celah di kode endpoint publik, dampaknya terbatas (user DB
+# itu TIDAK BISA baca tabel users/password, TIDAK BISA DELETE/DROP apa pun).
+#
+# Kalau PUBLIC_DATABASE_URL belum diisi, otomatis JATUH KEMBALI (fallback) ke
+# koneksi utama seperti sebelumnya - tidak ada yang rusak kalau Anda belum
+# sempat setup user database terbatas ini.
+PUBLIC_DATABASE_URL = os.getenv("PUBLIC_DATABASE_URL", "").strip()
+if PUBLIC_DATABASE_URL:
+    if PUBLIC_DATABASE_URL.startswith("postgres://"):
+        PUBLIC_DATABASE_URL = PUBLIC_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    public_engine = create_engine(
+        PUBLIC_DATABASE_URL, pool_pre_ping=True, pool_recycle=300, pool_size=5, max_overflow=10,
+    )
+    PublicSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=public_engine)
+    logger.info("PUBLIC_DATABASE_URL terdeteksi - endpoint publik akan pakai user database terbatas.")
+else:
+    PublicSessionLocal = SessionLocal
+    logger.warning(
+        "PUBLIC_DATABASE_URL belum diatur - endpoint publik (/pickup-intake, /track) "
+        "masih memakai koneksi database UTAMA (akses penuh). Lihat panduan Opsi 2 "
+        "utk mengatur user database terbatas demi keamanan lebih baik."
+    )
+
+
+def get_public_db():
+    db = PublicSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def init_db():
     """
     PENTING SOAL KEAMANAN DATA:
