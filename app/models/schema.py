@@ -172,6 +172,27 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class LoginOtpCode(Base):
+    """
+    Kode OTP untuk 2FA login (SAAT INI khusus role superadmin). Satu baris =
+    satu percobaan login yang sedang menunggu verifikasi OTP - BUKAN sesi
+    login yang sudah jadi (token JWT baru diterbitkan SETELAH kode ini
+    diverifikasi benar, lihat endpoint /auth/verify-otp).
+    """
+    __tablename__ = "login_otp_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    pre_auth_token = Column(String(100), unique=True, index=True, nullable=False)
+    code_hash = Column(String(255), nullable=False)  # kode 6 digit di-hash, BUKAN plain text
+    expires_at = Column(DateTime, nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)  # percobaan salah kode
+    consumed = Column(Boolean, default=False, nullable=False)  # True setelah berhasil dipakai/kedaluwarsa
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
 class LocationCounter(Base):
     """
     Counter nomor urut tiket PER LOKASI, disimpan di tabel terpisah dan di-lock
