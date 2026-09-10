@@ -1361,7 +1361,10 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
             function populatePaymentRows(menu, data) {
                 const loc = menu.replace('payment-', '');
-                const filtered = data.filter(d => !d.warranty_status || d.warranty_status === 'Out of Warranty');
+                // HANYA tiket dgn status garansi eksplisit "Out of Warranty" yang masuk
+                // Tab Payment - tiket yang status garansinya masih kosong (belum
+                // ditentukan tim Teknisi) TIDAK ditampilkan di sini.
+                const filtered = data.filter(d => d.warranty_status === 'Out of Warranty');
                 paymentRowsCache[loc] = filtered;
                 const el = document.getElementById(`tablePayment-${loc}`);
                 if (!el) return;
@@ -2267,7 +2270,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     root.innerHTML = `
                         <div id="view-table-payment-${loc}">
                             <div class="card">
-                                <h2>Status Payment Service - ${label} (Out of Warranty / Belum Ditentukan)</h2>
+                                <h2>Status Payment Service - ${label} (Out of Warranty)</h2>
                                 <table>
                                     <thead><tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr></thead>
                                     <tbody id="tablePayment-${loc}"></tbody>
