@@ -25,8 +25,21 @@ class UserCreateIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     full_name: str
-    role: Literal["staff", "superadmin"] = "staff"
+    role: Literal["staff", "admin", "superadmin"] = "staff"
     department: Optional[Literal["pusat", "cabang", "pickup"]] = None
+
+
+class UserUpdateIn(BaseModel):
+    """
+    Dipakai tombol Edit di Kelola User. `password` OPSIONAL - kosongkan
+    kalau tidak mau mengubah password user tsb (isi hanya kalau memang mau
+    di-reset ke password baru).
+    """
+    email: EmailStr
+    full_name: str
+    role: Literal["staff", "admin", "superadmin"]
+    department: Optional[Literal["pusat", "cabang", "pickup"]] = None
+    password: Optional[str] = Field(default=None, min_length=8)
 
 
 class UserOut(BaseModel):
