@@ -84,6 +84,9 @@ class ServiceTicket(Base):
     payment_method = Column(String(50), nullable=True)      # kanal yang dipilih, mis. VIRTUAL_ACCOUNT_BCA
     payment_url = Column(String(500), nullable=True)        # link halaman pembayaran DOKU
     payment_expired_at = Column(DateTime, nullable=True)    # kapan kode bayar/VA ini kedaluwarsa
+    paid_at = Column(DateTime, nullable=True)                # kapan BENAR-BENAR dibayar - diisi
+                                                               # otomatis dari notifikasi/webhook
+                                                               # DOKU, BUKAN dari aksi staff manual.
 
     # BARU: Data khusus dokumen Penawaran Harga & Invoice (TIDAK mengubah data
     # asli tiket - mis. invoice_owner_name terpisah dari customer_name)
@@ -95,6 +98,7 @@ class ServiceTicket(Base):
     pph23_amount = Column(Float, nullable=True)
     admin_bank_fee = Column(Float, nullable=True)
     invoice_number = Column(String(50), nullable=True)    # "098/INV/MD/2026" - dibuat sekali, permanen
+    invoice_created_at = Column(DateTime, nullable=True)   # kapan nomor invoice PERTAMA KALI dibuat
     quotation_number = Column(String(50), nullable=True)  # "067/SPH/MD/2026" - dibuat sekali, permanen
 
     # Timestamps
