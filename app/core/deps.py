@@ -46,7 +46,11 @@ def require_role(*allowed_roles: str):
 
 def require_department_access(current_user: User, srv_type: str) -> None:
     """
-    Superadmin: bebas akses semua lokasi (pusat/cabang/pickup).
+    Superadmin & Admin: bebas akses semua lokasi (pusat/cabang/pickup) - role
+    "admin" SENGAJA disamakan dgn superadmin di sini (akses data penuh),
+    bedanya HANYA di menu Setting (lihat require_role("superadmin") yang
+    tetap ketat khusus superadmin di endpoint Kelola User/Model Alat/Cabang/
+    Pickup Center - admin TIDAK diberi akses ke situ).
     Staff    : HANYA boleh akses lokasi sesuai `department` miliknya sendiri.
 
     Dipanggil manual di dalam body endpoint (bukan sebagai Depends bawaan)
@@ -54,7 +58,7 @@ def require_department_access(current_user: User, srv_type: str) -> None:
     Ini mencegah staff cabang membuat/melihat tiket di data pusat (atau
     sebaliknya) meskipun mereka memanggil API langsung tanpa lewat UI.
     """
-    if current_user.role == "superadmin":
+    if current_user.role in ("superadmin", "admin"):
         return
     if current_user.department != srv_type:
         raise HTTPException(
