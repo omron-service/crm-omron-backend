@@ -362,7 +362,7 @@ def create_ticket(
             device_model=ticket.device_model or "-",
             serial_number=ticket.serial_number or "-",
             accessories=ticket.accessories,
-            warranty_status=ticket.warranty_status or "Out of Warranty",
+            warranty_status=ticket.warranty_status,
             warranty_period=ticket.warranty_period,
             product_origin=ticket.product_origin,
             complaint=ticket.complaint or "-",
@@ -471,7 +471,7 @@ def update_ticket(
         ticket.device_model = data.device_model or "-"
         ticket.serial_number = data.serial_number or "-"
         ticket.accessories = data.accessories
-        ticket.warranty_status = data.warranty_status or "Out of Warranty"
+        ticket.warranty_status = data.warranty_status
         ticket.warranty_period = data.warranty_period
         ticket.product_origin = data.product_origin
         ticket.complaint = data.complaint or "-"
