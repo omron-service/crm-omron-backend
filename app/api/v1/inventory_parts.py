@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Optional
 
@@ -550,6 +550,8 @@ def report_stock_list(
 def report_movements(
     location: str,
     movement_type: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -558,13 +560,16 @@ def report_movements(
     if movement_type not in REPORTABLE_MOVEMENT_TYPES.get(loc, {}):
         raise HTTPException(status_code=400, detail="movement_type tidak valid untuk lokasi ini.")
 
-    rows = (
+    query = (
         db.query(PartStockMovement, PartCatalog)
         .join(PartCatalog, PartStockMovement.part_id == PartCatalog.id)
         .filter(PartStockMovement.location == loc, PartStockMovement.movement_type == movement_type)
-        .order_by(desc(PartStockMovement.created_at))
-        .all()
     )
+    if date_from:
+        query = query.filter(PartStockMovement.created_at >= datetime.fromisoformat(date_from))
+    if date_to:
+        query = query.filter(PartStockMovement.created_at < datetime.fromisoformat(date_to) + timedelta(days=1))
+    rows = query.order_by(desc(PartStockMovement.created_at)).all()
     data = [
         [
             m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "-",
@@ -584,18 +589,23 @@ def report_movements(
 @router.get("/report/opname")
 def report_opname(
     location: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     loc = location.lower().strip()
     require_department_access(current_user, loc)
-    rows = (
+    query = (
         db.query(PartStockOpname, PartCatalog)
         .join(PartCatalog, PartStockOpname.part_id == PartCatalog.id)
         .filter(PartStockOpname.location == loc)
-        .order_by(desc(PartStockOpname.created_at))
-        .all()
     )
+    if date_from:
+        query = query.filter(PartStockOpname.created_at >= datetime.fromisoformat(date_from))
+    if date_to:
+        query = query.filter(PartStockOpname.created_at < datetime.fromisoformat(date_to) + timedelta(days=1))
+    rows = query.order_by(desc(PartStockOpname.created_at)).all()
     data = [
         [
             o.created_at.strftime("%Y-%m-%d %H:%M") if o.created_at else "-",

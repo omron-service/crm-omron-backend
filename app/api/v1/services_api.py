@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session, joinedload
@@ -600,6 +600,8 @@ def _get_or_create_doc_number(db: Session, ticket: ServiceTicket, doc_type: str)
     counter.last_number += 1
     doc_number = f"{counter.last_number:03d}/{doc_type}/MD/{year}"
     setattr(ticket, field_name, doc_number)
+    if doc_type == "INV":
+        ticket.invoice_created_at = datetime.utcnow()
     return doc_number
 
 
@@ -749,6 +751,7 @@ def download_invoice_pdf(
 def generate_payment_code(
     ticket_number: str,
     data: GeneratePaymentIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -767,6 +770,11 @@ def generate_payment_code(
     if not ticket.total_price or ticket.total_price <= 0:
         raise HTTPException(status_code=400, detail="Isi & simpan Harga Service (harus lebih dari 0) sebelum generate kode bayar.")
 
+    # URL webhook DOKU - dibangun otomatis dari domain server ini sendiri,
+    # supaya notifikasi "pembayaran sukses" dari DOKU sampai ke endpoint kita
+    # dan Tanggal Bayar bisa terisi otomatis (lihat doku_payment_notification).
+    callback_url = str(request.base_url).rstrip("/") + "/api/v1/public/doku-notification"
+
     try:
         result = create_payment_code(
             invoice_number=ticket.ticket_number,
@@ -774,6 +782,7 @@ def generate_payment_code(
             payment_method=data.payment_method,
             customer_name=ticket.customer_name,
             customer_phone=ticket.customer_phone,
+            callback_url=callback_url,
         )
     except DokuConfigError as e:
         raise HTTPException(status_code=503, detail=str(e))
