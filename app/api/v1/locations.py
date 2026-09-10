@@ -196,6 +196,21 @@ def list_pickup_centers(
     return query.order_by(PickupCenterCatalog.store_name).all()
 
 
+@pickup_router.get("/public")
+def list_pickup_centers_public(db: Session = Depends(get_db)):
+    """
+    Versi PUBLIK (tanpa login) dari endpoint di atas - dipakai khusus oleh
+    form drop-off di /pickup-intake (tidak mewajibkan login), untuk isi
+    dropdown/combobox "Nama Instansi" dari daftar Pickup Center yang AKTIF.
+    """
+    return (
+        db.query(PickupCenterCatalog)
+        .filter(PickupCenterCatalog.is_active.is_(True))
+        .order_by(PickupCenterCatalog.store_name)
+        .all()
+    )
+
+
 @pickup_router.post("/", status_code=201)
 def create_pickup_center(
     data: PickupCenterIn,
