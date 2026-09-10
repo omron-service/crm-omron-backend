@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import os
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Path, Query
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.v1 import mutations, services_api, auth as auth_api, inventory_parts, locations
 from app.api.v1.services_api import _next_ticket_number
-from app.db.session import get_db, init_db
+from app.db.session import get_db, init_db, get_public_db
 from app.core.deps import get_current_user, require_department_access
 from app.core.limiter import limiter
 from app.models.schema import ServiceTicket, User
@@ -65,19 +66,70 @@ def root():
     return {"status": "online", "system": "CRM Omron Healthcare API"}
 
 
+def verify_turnstile_or_raise(token: Optional[str], request: Request):
+    """
+    Verifikasi CAPTCHA Cloudflare Turnstile (Opsi 4 pengamanan) - dipakai di
+    KEDUA endpoint publik (/pickup-intake, /track).
+
+    SENGAJA tidak wajib: kalau environment variable TURNSTILE_SECRET_KEY
+    belum diisi di server, fungsi ini langsung lolos tanpa verifikasi apa pun
+    (supaya tidak merusak endpoint yang sudah jalan sebelum Anda sempat
+    setup akun Turnstile). Begitu TURNSTILE_SECRET_KEY diisi, verifikasi
+    CAPTCHA jadi WAJIB - request tanpa token yang valid akan ditolak.
+    """
+    import os
+    import requests as requests_lib
+
+    secret_key = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
+    if not secret_key:
+        return  # Turnstile belum diaktifkan di server ini - lewati saja
+
+    if not token:
+        raise HTTPException(status_code=400, detail="Verifikasi CAPTCHA wajib diisi.")
+
+    try:
+        resp = requests_lib.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": secret_key, "response": token, "remoteip": request.client.host if request.client else ""},
+            timeout=10,
+        )
+        result = resp.json()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Gagal memverifikasi CAPTCHA, coba lagi.")
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail="Verifikasi CAPTCHA gagal, silakan coba lagi.")
+
+
 class TrackQuery(BaseModel):
     query: str  # Nomor Tiket ATAU Serial Number alat
     phone: str  # utk verifikasi - dicocokkan 5 digit terakhir
+    turnstileToken: Optional[str] = None  # token CAPTCHA (Opsi 4) - opsional
+
+
+# Pesan error TUNGGAL dipakai utk KEDUA kasus gagal (nomor tidak ditemukan
+# MAUPUN nomor ketemu tapi HP tidak cocok) - SENGAJA disamakan (Opsi 1
+# pengamanan) supaya penyerang tidak bisa membedakan "nomor ini valid tapi
+# HP salah" dari "nomor ini memang tidak ada". Kalau pesannya beda, itu bisa
+# dipakai utk menebak-nebak nomor tiket yang valid satu per satu (enumerasi).
+TRACK_GENERIC_ERROR = "Data tidak ditemukan. Pastikan Nomor Tiket/Serial Number dan Nomor HP/WhatsApp sesuai dengan yang terdaftar."
 
 
 @app.post("/api/v1/public/track")
-@limiter.limit("10/minute")
-def track_ticket_api(request: Request, data: TrackQuery, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def track_ticket_api(request: Request, data: TrackQuery, db: Session = Depends(get_public_db)):
     """
     Lacak status servis - PUBLIK, bisa dicari pakai Nomor Tiket ATAU Serial
-    Number alat (sesuai permintaan terbaru), verifikasi identitas memakai
-    5 digit TERAKHIR dari No. HP/WhatsApp 1 yang terdaftar di tiket.
+    Number alat, verifikasi identitas memakai 5 digit TERAKHIR dari No.
+    HP/WhatsApp 1 yang terdaftar di tiket.
+
+    Pengamanan (lihat diskusi Opsi 1-4):
+    - Opsi 1: pesan error SAMA baik nomor tidak ada maupun HP tidak cocok.
+    - Opsi 2: pakai koneksi database terbatas (get_public_db), bukan penuh akses.
+    - Opsi 4: rate limit diperketat jadi 5x/menit + verifikasi CAPTCHA (kalau diatur).
     """
+    verify_turnstile_or_raise(data.turnstileToken, request)
+
     query_str = (data.query or "").strip()
     phone_input = (data.phone or "").strip()
     if not query_str or not phone_input:
@@ -88,17 +140,14 @@ def track_ticket_api(request: Request, data: TrackQuery, db: Session = Depends(g
         .filter(or_(ServiceTicket.ticket_number == query_str, ServiceTicket.serial_number == query_str))
         .first()
     )
-    if not ticket:
-        return JSONResponse(status_code=404, content={"ok": False, "message": "Data tidak ditemukan. Pastikan Nomor Tiket/Serial Number sudah benar."})
 
-    db_phone = "".join(filter(str.isdigit, ticket.customer_phone or ""))
+    db_phone = "".join(filter(str.isdigit, ticket.customer_phone or "" if ticket else ""))
     input_phone = "".join(filter(str.isdigit, phone_input))
+    phone_matches = bool(ticket) and bool(db_phone) and len(input_phone) >= 5 and db_phone[-5:] == input_phone[-5:]
 
-    # Verifikasi: cocokkan 5 digit TERAKHIR saja (sesuai permintaan terbaru -
-    # sebelumnya 8 digit). Tetap dibandingkan dari BELAKANG (bukan substring
-    # bebas) supaya tidak salah cocok dgn potongan nomor lain.
-    if not db_phone or not input_phone or len(input_phone) < 5 or db_phone[-5:] != input_phone[-5:]:
-        return JSONResponse(status_code=403, content={"ok": False, "message": "Nomor HP/WhatsApp tidak cocok dengan yang terdaftar pada data ini."})
+    if not ticket or not phone_matches:
+        # SATU pesan generik, SATU status code (404), utk KEDUA kondisi gagal.
+        return JSONResponse(status_code=404, content={"ok": False, "message": TRACK_GENERIC_ERROR})
 
     def _iso(d):
         return d.strftime("%Y-%m-%d") if d else None
@@ -150,7 +199,7 @@ def download_excel_report(
         srv = service_type.lower().strip()
         require_department_access(current_user, srv)
         query = query.filter(func.lower(ServiceTicket.service_type) == srv)
-    elif current_user.role != "superadmin":
+    elif current_user.role not in ("superadmin", "admin"):
         query = query.filter(func.lower(ServiceTicket.service_type) == current_user.department)
 
     date_col = func.coalesce(ServiceTicket.received_date, ServiceTicket.created_at)
@@ -210,7 +259,7 @@ def download_excel_report(
         })
 
     excel_file = generate_service_report_excel(rows)
-    label = service_type or (current_user.department if current_user.role != "superadmin" else "semua")
+    label = service_type or (current_user.department if current_user.role not in ("superadmin", "admin") else "semua")
     filename = f"Laporan_Servis_Omron_{label}_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
         excel_file,
@@ -241,7 +290,7 @@ def download_payment_status_report(
         srv = service_type.lower().strip()
         require_department_access(current_user, srv)
         query = query.filter(func.lower(ServiceTicket.service_type) == srv)
-    elif current_user.role != "superadmin":
+    elif current_user.role not in ("superadmin", "admin"):
         query = query.filter(func.lower(ServiceTicket.service_type) == current_user.department)
 
     query = query.filter(ServiceTicket.warranty_status == "Out of Warranty")
@@ -293,7 +342,7 @@ def download_payment_status_report(
         })
 
     excel_file = generate_payment_status_excel(rows)
-    label = service_type or (current_user.department if current_user.role != "superadmin" else "semua")
+    label = service_type or (current_user.department if current_user.role not in ("superadmin", "admin") else "semua")
     filename = f"Laporan_Status_Payment_{label}_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
         excel_file,
@@ -326,11 +375,13 @@ class PickupIntakeCreate(BaseModel):
     serial_number: Optional[str] = Field(default="-", max_length=50)
     accessories: Optional[str] = Field(default=None, max_length=150)
     complaint: Optional[str] = Field(default="-", max_length=1000)
+    turnstileToken: Optional[str] = None  # token CAPTCHA (Opsi 4) - opsional
 
 
 @app.post("/api/v1/public/pickup-intake")
-@limiter.limit("10/minute")
-def pickup_intake_create(request: Request, data: PickupIntakeCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def pickup_intake_create(request: Request, data: PickupIntakeCreate, db: Session = Depends(get_public_db)):
+    verify_turnstile_or_raise(data.turnstileToken, request)
     try:
         ticket_num = _next_ticket_number(db, "pickup")
         db_ticket = ServiceTicket(
@@ -439,13 +490,22 @@ async def doku_payment_notification(request: Request, db: Session = Depends(get_
 
 @app.get("/pickup-intake", response_class=HTMLResponse)
 def pickup_intake_page():
-    return """
+    turnstile_site_key = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+    turnstile_script = (
+        '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>'
+        if turnstile_site_key else ""
+    )
+    turnstile_widget = (
+        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}"></div>' if turnstile_site_key else ""
+    )
+    html = """
     <!DOCTYPE html>
     <html lang="id">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Drop-Off Pickup Center - Omron Healthcare</title>
+        __TURNSTILE_SCRIPT__
         <style>
             * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
             body { background: #f0f2f5; margin: 0; padding: 20px; }
@@ -507,6 +567,8 @@ def pickup_intake_page():
                     <div class="form-group"><label>Serial No. Alat</label><input id="pSerial"></div>
                     <div class="form-group"><label>Aksesoris</label><input id="pAccessories" placeholder="Contoh: Kabel, Adaptor"></div>
                     <div class="form-group"><label>Keluhan Pelanggan</label><input id="pComplaint"></div>
+
+                    __TURNSTILE_WIDGET__
 
                     <button type="submit">Simpan Drop-Off</button>
                 </form>
@@ -605,6 +667,7 @@ def pickup_intake_page():
                     serial_number: document.getElementById('pSerial').value.trim() || '-',
                     accessories: document.getElementById('pAccessories').value.trim() || null,
                     complaint: document.getElementById('pComplaint').value.trim() || '-',
+                    turnstileToken: (window.turnstile && document.querySelector('.cf-turnstile')) ? turnstile.getResponse() : null,
                 };
 
                 try {
@@ -628,16 +691,27 @@ def pickup_intake_page():
     </body>
     </html>
     """
+    html = html.replace("__TURNSTILE_SCRIPT__", turnstile_script).replace("__TURNSTILE_WIDGET__", turnstile_widget)
+    return html
 
 
 @app.get("/track", response_class=HTMLResponse)
 def track_ticket_page():
-    return """
+    turnstile_site_key = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+    turnstile_script = (
+        '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>'
+        if turnstile_site_key else ""
+    )
+    turnstile_widget = (
+        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}" style="margin:14px 0;"></div>' if turnstile_site_key else ""
+    )
+    html = """
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <title>Lacak Status Service — OMRON Healthcare</title>
+__TURNSTILE_SCRIPT__
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <style>
@@ -753,6 +827,8 @@ def track_ticket_page():
         <div class="helper">Cukup 5 digit TERAKHIR dari nomor HP/WhatsApp yang didaftarkan saat menyerahkan alat.</div>
       </div>
 
+      __TURNSTILE_WIDGET__
+
       <button type="submit" class="btn btn-primary" id="btnSubmit">Lacak Status</button>
     </form>
   </div>
@@ -852,7 +928,7 @@ form.addEventListener('submit', async (e)=>{
     const res = await fetch('/api/v1/public/track', {
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ query, phone })
+      body: JSON.stringify({ query, phone, turnstileToken: (window.turnstile && document.querySelector('.cf-turnstile')) ? turnstile.getResponse() : null })
     });
     const payload = await res.json().catch(()=>({ ok:false, message:'Respons server tidak valid.' }));
 
@@ -921,6 +997,8 @@ function renderProgress(status){
 </body>
 </html>
 """
+    html = html.replace("__TURNSTILE_SCRIPT__", turnstile_script).replace("__TURNSTILE_WIDGET__", turnstile_widget)
+    return html
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1165,15 +1243,18 @@ def admin_dashboard_page():
                         </div>
 
                         <div id="userFormBox" class="sparepart-box hidden" style="margin-top:12px; border:1px dashed #ccc; padding:10px; border-radius:6px;">
+                            <div id="userFormTitle" style="font-weight:bold; color:#0056b3; margin-bottom:8px;">Tambah User Baru</div>
+                            <input type="hidden" id="nuEditingId" value="">
                             <div class="form-grid">
                                 <div class="form-group"><label>Nama Lengkap</label><input id="nuName"></div>
                                 <div class="form-group"><label>Email</label><input id="nuEmail" type="email"></div>
-                                <div class="form-group"><label>Password</label><input id="nuPassword" type="password"></div>
+                                <div class="form-group"><label id="nuPasswordLabel">Password</label><input id="nuPassword" type="password"></div>
                                 <div class="form-group">
                                     <label>Role</label>
                                     <select id="nuRole" onchange="onRoleChange()">
                                         <option value="staff">Staff (dibatasi 1 departemen)</option>
-                                        <option value="superadmin">Super Admin (akses semua)</option>
+                                        <option value="admin">Admin (akses semua, tanpa menu Setting)</option>
+                                        <option value="superadmin">Super Admin (akses semua + Setting)</option>
                                     </select>
                                 </div>
                                 <div class="form-group" id="nuDeptWrap">
@@ -1185,7 +1266,10 @@ def admin_dashboard_page():
                                     </select>
                                 </div>
                             </div>
-                            <button class="btn btn-success" onclick="createUser()">Simpan User</button>
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn btn-secondary" onclick="toggleUserForm()">Batal</button>
+                                <button class="btn btn-success" id="userSaveBtn" onclick="createUser()">Simpan User</button>
+                            </div>
                         </div>
 
                         <table style="margin-top:15px;">
@@ -1445,20 +1529,31 @@ def admin_dashboard_page():
                 document.getElementById('authCard').classList.add('hidden');
                 document.getElementById('sidebar').classList.remove('hidden');
                 document.getElementById('btnLogout').classList.remove('hidden');
-                document.getElementById('userStatus').innerText =
-                    currentRole === 'superadmin' ? 'Super Admin' : `Staff - ${currentDept}`;
 
-                // Staff (non-superadmin) hanya melihat menu sesuai departemennya,
-                // dan tidak melihat menu "Setting (Super Admin)" sama sekali.
+                const FULL_ACCESS_ROLES = ['superadmin', 'admin']; // akses semua departemen (beda dgn staff)
+                const hasFullAccess = FULL_ACCESS_ROLES.includes(currentRole);
+
+                document.getElementById('userStatus').innerText =
+                    currentRole === 'superadmin' ? 'Super Admin'
+                    : currentRole === 'admin' ? 'Admin'
+                    : `Staff - ${currentDept}`;
+
+                // Menu "Setting" SENGAJA HANYA utk 'superadmin' - role 'admin'
+                // sengaja TIDAK dimasukkan di sini walau akses datanya sama
+                // luasnya dgn superadmin (sesuai permintaan: admin = akses
+                // penuh KECUALI menu Setting).
                 document.getElementById('menu-setting').style.display = (currentRole === 'superadmin') ? '' : 'none';
+
+                // Staff dibatasi hanya lihat departemennya sendiri. Admin (spt
+                // superadmin) melihat SEMUA departemen tanpa dibatasi.
                 document.querySelectorAll('[data-loc]').forEach(el => {
                     const loc = el.getAttribute('data-loc');
-                    if (currentRole !== 'superadmin' && loc !== currentDept) {
+                    if (!hasFullAccess && loc !== currentDept) {
                         el.parentElement.style.display = 'none';
                     }
                 });
 
-                const startTab = (currentRole === 'superadmin') ? 'dashboard' : `service-${currentDept}`;
+                const startTab = hasFullAccess ? 'dashboard' : `service-${currentDept}`;
                 showTab(startTab);
             }
 
@@ -2105,24 +2200,58 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 document.getElementById('nuDeptWrap').style.display = isStaff ? '' : 'none';
             }
 
+            let usersCache = [];
+
             function toggleUserForm() {
-                document.getElementById('userFormBox').classList.toggle('hidden');
+                const box = document.getElementById('userFormBox');
+                const willShow = box.classList.contains('hidden');
+                box.classList.toggle('hidden');
+                if (willShow) {
+                    // Selalu mulai dalam mode TAMBAH (bukan edit) kalau dibuka
+                    // lewat tombol "+ Tambah User" - editUser() akan mengisi
+                    // ulang field-field ini kalau dibuka lewat tombol Edit.
+                    document.getElementById('nuEditingId').value = '';
+                    document.getElementById('userFormTitle').innerText = 'Tambah User Baru';
+                    document.getElementById('userSaveBtn').innerText = 'Simpan User';
+                    document.getElementById('nuPasswordLabel').innerText = 'Password';
+                    setVal('nuName', ''); setVal('nuEmail', ''); setVal('nuPassword', '');
+                    setVal('nuRole', 'staff'); setVal('nuDept', 'pusat');
+                    onRoleChange();
+                }
+            }
+
+            function editUser(id) {
+                const u = usersCache.find(x => x.id === id);
+                if (!u) return;
+                document.getElementById('nuEditingId').value = id;
+                document.getElementById('userFormTitle').innerText = `Edit User: ${u.full_name}`;
+                document.getElementById('userSaveBtn').innerText = 'Update User';
+                document.getElementById('nuPasswordLabel').innerText = 'Password (kosongkan jika tidak diubah)';
+                setVal('nuName', u.full_name || '');
+                setVal('nuEmail', u.email || '');
+                setVal('nuPassword', '');
+                setVal('nuRole', u.role || 'staff');
+                setVal('nuDept', u.department || 'pusat');
+                onRoleChange();
+                document.getElementById('userFormBox').classList.remove('hidden');
             }
 
             async function renderUsers() {
                 try {
                     const res = await authFetch('/api/v1/admin/users/');
                     if (!res.ok) return;
-                    const users = await res.json();
+                    usersCache = await res.json();
+                    const ROLE_LABELS = { staff: 'Staff', admin: 'Admin', superadmin: 'Super Admin' };
                     const el = document.getElementById('tableUsers');
-                    el.innerHTML = users.map(u => `
+                    el.innerHTML = usersCache.map(u => `
                         <tr>
                             <td>${esc(u.full_name)}</td>
                             <td>${esc(u.email)}</td>
-                            <td>${esc(u.role)}</td>
+                            <td>${esc(ROLE_LABELS[u.role] || u.role)}</td>
                             <td>${esc(u.department) || '-'}</td>
                             <td><span class="badge ${u.is_active ? 'badge-active' : 'badge-inactive'}">${u.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
-                            <td>
+                            <td style="white-space:nowrap;">
+                                <button class="btn btn-secondary" onclick="editUser(${u.id})">Edit</button>
                                 ${u.is_active
                                     ? `<button class="btn btn-danger" onclick="setUserActive(${u.id}, false)">Nonaktifkan</button>`
                                     : `<button class="btn btn-success" onclick="setUserActive(${u.id}, true)">Aktifkan</button>`}
@@ -2133,24 +2262,34 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
             }
 
             async function createUser() {
+                const editingId = valOf('nuEditingId');
+                const isEditing = !!editingId;
+                const role = document.getElementById('nuRole').value;
+                const password = document.getElementById('nuPassword').value;
+
                 const payload = {
                     full_name: document.getElementById('nuName').value.trim(),
                     email: document.getElementById('nuEmail').value.trim(),
-                    password: document.getElementById('nuPassword').value,
-                    role: document.getElementById('nuRole').value,
-                    department: document.getElementById('nuRole').value === 'staff' ? document.getElementById('nuDept').value : null,
+                    role: role,
+                    department: role === 'staff' ? document.getElementById('nuDept').value : null,
                 };
-                if (!payload.full_name || !payload.email || !payload.password) return alert('Semua field wajib diisi.');
+                if (!isEditing || password) payload.password = password;
+
+                if (!payload.full_name || !payload.email) return alert('Nama dan Email wajib diisi.');
+                if (!isEditing && !password) return alert('Password wajib diisi utk user baru.');
+
+                const url = isEditing ? `/api/v1/admin/users/${editingId}` : '/api/v1/admin/users/';
+                const method = isEditing ? 'PUT' : 'POST';
 
                 try {
-                    const res = await authFetch('/api/v1/admin/users/', {
-                        method: 'POST',
+                    const res = await authFetch(url, {
+                        method: method,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || 'Gagal membuat user.');
-                    alert('User berhasil dibuat!');
+                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan user.');
+                    alert(isEditing ? 'User berhasil diupdate!' : 'User berhasil dibuat!');
                     document.getElementById('userFormBox').classList.add('hidden');
                     renderUsers();
                 } catch(e) {
