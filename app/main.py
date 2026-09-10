@@ -1348,7 +1348,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                         <td>${esc(d.instansi_name) || '-'}</td>
                         <td>${esc(d.device_model)}</td>
                         <td>${esc(d.serial_number) || '-'}</td>
-                        <td>${esc(d.warranty_status) || 'Out of Warranty'}</td>
+                        <td>${esc(d.warranty_status) || '-'}</td>
                         <td>${esc(d.complaint) || '-'}</td>
                         <td><span class="badge badge-lunas">${esc(d.status) || 'Diterima'}</span></td>
                         <td>${d.received_date ? d.received_date.split('T')[0] : (d.created_at ? d.created_at.split('T')[0] : '-')}</td>
@@ -2267,7 +2267,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     root.innerHTML = `
                         <div id="view-table-payment-${loc}">
                             <div class="card">
-                                <h2>Status Payment Service - ${label} (Out of Warranty)</h2>
+                                <h2>Status Payment Service - ${label} (Out of Warranty / Belum Ditentukan)</h2>
                                 <table>
                                     <thead><tr><th>No. Tiket</th><th>Pemilik</th><th>Model Alat</th><th>Total Biaya</th><th>Kode Payment</th><th>Status Bayar</th></tr></thead>
                                     <tbody id="tablePayment-${loc}"></tbody>
