@@ -21,6 +21,29 @@ class Token(BaseModel):
     department: Optional[str] = None
 
 
+class LoginResponse(BaseModel):
+    """
+    Dikembalikan oleh /auth/login. Kalau `otp_required=True`, field token/role/
+    department kosong - frontend HARUS lanjut ke layar input kode OTP dan
+    memanggil /auth/verify-otp memakai `pre_auth_token` sebelum benar-benar
+    dapat token akses. Kalau `otp_required=False`, `token` langsung berisi
+    Token biasa (perilaku lama, tidak berubah - dipakai staff/admin).
+    """
+    otp_required: bool = False
+    pre_auth_token: Optional[str] = None
+    email_hint: Optional[str] = None  # email tersamar, mis. "sup***@gmail.com"
+    token: Optional[Token] = None
+
+
+class VerifyOtpIn(BaseModel):
+    pre_auth_token: str
+    code: str = Field(min_length=6, max_length=6)
+
+
+class ResendOtpIn(BaseModel):
+    pre_auth_token: str
+
+
 class UserCreateIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
