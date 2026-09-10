@@ -1192,6 +1192,19 @@ def admin_dashboard_page():
                         </div>
                         <button class="btn btn-success" style="width: 100%;" onclick="bootstrapSuperadmin()">Buat Akun Super Admin</button>
                     </div>
+
+                    <div id="otpPane" class="hidden">
+                        <p style="font-size:12px; color:#666;">Kode OTP 6 digit sudah dikirim ke email <b id="otpEmailHint"></b>. Berlaku 5 menit.</p>
+                        <div class="form-group">
+                            <label>Kode OTP</label>
+                            <input type="text" id="otpCode" maxlength="6" inputmode="numeric" placeholder="123456" style="letter-spacing:4px; font-size:18px; text-align:center;">
+                        </div>
+                        <button class="btn" style="width: 100%;" onclick="verifyOtp()">Verifikasi</button>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+                            <a href="#" onclick="cancelOtpFlow(); return false;" style="font-size:12px; color:#888;">&larr; Login ulang</a>
+                            <a href="#" id="otpResendLink" onclick="resendOtp(); return false;" style="font-size:12px; color:#0056b3;">Kirim ulang kode</a>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 1. DASHBOARD -->
@@ -1449,6 +1462,8 @@ def admin_dashboard_page():
                 document.getElementById('tabBootstrapBtn').classList.toggle('active', which === 'bootstrap');
                 document.getElementById('loginPane').classList.toggle('hidden', which !== 'login');
                 document.getElementById('bootstrapPane').classList.toggle('hidden', which !== 'bootstrap');
+                document.getElementById('otpPane').classList.add('hidden');
+                pendingOtpToken = null;
             }
 
             function showAuthError(msg) {
@@ -1491,6 +1506,17 @@ def admin_dashboard_page():
                 }
             }
 
+            let pendingOtpToken = null; // pre_auth_token dari /login saat menunggu verifikasi OTP
+
+            function applyLoginToken(tokenObj) {
+                authToken = tokenObj.access_token;
+                currentRole = tokenObj.role;
+                currentDept = tokenObj.department || '';
+                localStorage.setItem('omron_token', authToken);
+                localStorage.setItem('omron_role', currentRole);
+                localStorage.setItem('omron_dept', currentDept);
+            }
+
             async function login() {
                 const email = document.getElementById('loginEmail').value.trim();
                 const password = document.getElementById('loginPassword').value;
@@ -1505,17 +1531,75 @@ def admin_dashboard_page():
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Login gagal.');
 
-                    authToken = data.access_token;
-                    currentRole = data.role;
-                    currentDept = data.department || '';
-                    localStorage.setItem('omron_token', authToken);
-                    localStorage.setItem('omron_role', currentRole);
-                    localStorage.setItem('omron_dept', currentDept);
+                    if (data.otp_required) {
+                        // Role ini (saat ini: superadmin) wajib verifikasi kode
+                        // OTP dari email dulu - token BELUM diterbitkan.
+                        pendingOtpToken = data.pre_auth_token;
+                        document.getElementById('otpEmailHint').innerText = data.email_hint || '';
+                        document.getElementById('otpCode').value = '';
+                        document.getElementById('loginPane').classList.add('hidden');
+                        document.getElementById('bootstrapPane').classList.add('hidden');
+                        document.getElementById('otpPane').classList.remove('hidden');
+                        document.getElementById('authError').style.display = 'none';
+                        return;
+                    }
 
+                    applyLoginToken(data.token);
                     await enterDashboard();
                 } catch(e) {
                     showAuthError(e.message);
                 }
+            }
+
+            async function verifyOtp() {
+                const code = document.getElementById('otpCode').value.trim();
+                if (!code || code.length !== 6) return showAuthError('Kode OTP harus 6 digit.');
+                if (!pendingOtpToken) return cancelOtpFlow();
+
+                try {
+                    const res = await fetch('/api/v1/auth/verify-otp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pre_auth_token: pendingOtpToken, code })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Verifikasi OTP gagal.');
+
+                    pendingOtpToken = null;
+                    applyLoginToken(data);
+                    await enterDashboard();
+                } catch(e) {
+                    showAuthError(e.message);
+                }
+            }
+
+            async function resendOtp() {
+                if (!pendingOtpToken) return cancelOtpFlow();
+                const link = document.getElementById('otpResendLink');
+                const originalText = link.innerText;
+                link.innerText = 'Mengirim...';
+                try {
+                    const res = await fetch('/api/v1/auth/resend-otp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pre_auth_token: pendingOtpToken })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal mengirim ulang kode.');
+                    alert('Kode OTP baru sudah dikirim ke email Anda.');
+                } catch(e) {
+                    showAuthError(e.message);
+                } finally {
+                    link.innerText = originalText;
+                }
+            }
+
+            function cancelOtpFlow() {
+                pendingOtpToken = null;
+                document.getElementById('otpPane').classList.add('hidden');
+                document.getElementById('loginPane').classList.remove('hidden');
+                document.getElementById('loginPassword').value = '';
+                document.getElementById('authError').style.display = 'none';
             }
 
             function logout() {
