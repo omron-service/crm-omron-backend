@@ -99,6 +99,31 @@ def _generate_signature(client_id: str, secret_key: str, request_id: str, timest
     return f"HMACSHA256={signature}"
 
 
+def verify_notification_signature(
+    client_id: str, secret_key: str, request_id: str, timestamp: str,
+    request_target: str, body_raw: bytes, signature_header: str,
+) -> bool:
+    """
+    Verifikasi signature notifikasi/webhook yang DATANG DARI DOKU (arah
+    kebalikan dari _generate_signature - di sini DOKU adalah pengirim, kita
+    yang memverifikasi). Dipakai oleh endpoint publik /doku-notification agar
+    tidak ada pihak lain yang bisa memalsukan notifikasi "pembayaran sukses".
+    """
+    digest = base64.b64encode(hashlib.sha256(body_raw).digest()).decode()
+    raw = (
+        f"Client-Id:{client_id}\n"
+        f"Request-Id:{request_id}\n"
+        f"Request-Timestamp:{timestamp}\n"
+        f"Request-Target:{request_target}\n"
+        f"Digest:{digest}"
+    )
+    expected = base64.b64encode(
+        hmac.new(secret_key.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).digest()
+    ).decode()
+    expected_header = f"HMACSHA256={expected}"
+    return hmac.compare_digest(expected_header, signature_header or "")
+
+
 def create_payment_code(
     invoice_number: str,
     amount: float,
