@@ -1974,23 +1974,31 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                             <div id="invOpnameFormBox-${loc}" class="hidden" style="background:#fff3cd; border:1px dashed #ffc107; padding:10px; border-radius:6px; margin-bottom:15px;">
                                 <div style="font-weight:bold; color:#856404; margin-bottom:8px;">Stok Opname (Hitung Fisik) - ${label}</div>
-                                <div class="form-grid">
-                                    ${loc === 'cabang' ? `
-                                    <div class="form-group">
-                                        <label>Nama Cabang <span class="required">*</span></label>
-                                        <input id="invOpBranchName-${loc}" list="invOpBranchNameList-${loc}" placeholder="Pilih/ketik nama cabang">
-                                        <datalist id="invOpBranchNameList-${loc}"></datalist>
-                                    </div>
-                                    ` : ''}
-                                    <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invOpCode-${loc}" placeholder="Kode/part number"></div>
-                                    <div class="form-group"><label>Nama Sparepart</label><input id="invOpName-${loc}" placeholder="Nama sparepart"></div>
-                                    <div class="form-group"><label>Jumlah Hasil Hitung Fisik <span class="required">*</span></label><input type="number" min="0" id="invOpQty-${loc}"></div>
-                                    <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invOpNote-${loc}" placeholder="Opsional"></div>
+                                ${loc === 'cabang' ? `
+                                <div class="form-group" style="max-width:320px;">
+                                    <label>Nama Cabang <span class="required">*</span></label>
+                                    <input id="invOpBranchName-${loc}" list="invOpBranchNameList-${loc}" placeholder="Pilih/ketik nama cabang">
+                                    <datalist id="invOpBranchNameList-${loc}"></datalist>
                                 </div>
-                                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                                ` : ''}
+
+                                <div id="invOpItemsContainer-${loc}"></div>
+
+                                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:10px;">
+                                    <button class="btn btn-secondary" onclick="addOpnameItem('${loc}')">+ Add Item</button>
                                     <button class="btn btn-secondary" onclick="toggleOpnameForm('${loc}')">Batal</button>
                                     <button class="btn btn-warning" id="invOpnameSaveBtn-${loc}" onclick="submitOpname('${loc}')">Simpan Stok Opname</button>
                                 </div>
+                            </div>
+
+                            <div id="invOpBulkUploadBar-${loc}" class="hidden" style="display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:#fff8e1; padding:10px; border-radius:6px;">
+                                <span style="font-size:12px; color:#666; margin-right:auto;">Update banyak hasil stok opname sekaligus lewat Excel:</span>
+                                <button class="btn btn-secondary" onclick="downloadOpnameTemplate('${loc}')">📄 Contoh Format Opname</button>
+                                <select id="invOpBulkSelect-${loc}" onchange="if(this.value){ document.getElementById('invOpBulkFileInput-${loc}').click(); this.selectedIndex = 0; }">
+                                    <option value="">📤 Upload Massal Excel ▾</option>
+                                    <option value="upload">Stok Opname ${label} (Excel)</option>
+                                </select>
+                                <input type="file" id="invOpBulkFileInput-${loc}" accept=".xlsx,.xlsm" style="display:none;" onchange="handleOpnameBulkFile('${loc}', this)">
                             </div>
 
                             <div class="form-grid" style="margin-bottom:12px; max-width:500px;">
@@ -2491,6 +2499,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
             async function openMovementForm(loc, type, label) {
                 document.getElementById(`invOpnameFormBox-${loc}`).classList.add('hidden');
+                document.getElementById(`invOpBulkUploadBar-${loc}`).classList.add('hidden');
                 currentMovementType[loc] = type;
                 document.getElementById(`invMovementTitle-${loc}`).innerText = label;
 
@@ -2554,15 +2563,89 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 document.getElementById(`invBulkUploadBar-${loc}`).classList.add('hidden');
                 const box = document.getElementById(`invOpnameFormBox-${loc}`);
                 box.classList.toggle('hidden');
-                if (!box.classList.contains('hidden')) {
-                    setVal(`invOpCode-${loc}`, '');
-                    setVal(`invOpName-${loc}`, '');
-                    setVal(`invOpQty-${loc}`, '');
-                    setVal(`invOpNote-${loc}`, '');
+                const opening = !box.classList.contains('hidden');
+                if (opening) {
                     if (loc === 'cabang') {
                         setVal(`invOpBranchName-${loc}`, '');
                         loadBranchNameDatalist(`invOpBranchNameList-${loc}`);
                     }
+                    document.getElementById(`invOpItemsContainer-${loc}`).innerHTML = '';
+                    opnameItemCounts[loc] = 0;
+                    addOpnameItem(loc);
+                    document.getElementById(`invOpBulkUploadBar-${loc}`).classList.remove('hidden');
+                } else {
+                    document.getElementById(`invOpBulkUploadBar-${loc}`).classList.add('hidden');
+                }
+            }
+
+            let opnameItemCounts = {};
+
+            function addOpnameItem(loc) {
+                const n = (opnameItemCounts[loc] || 0) + 1;
+                opnameItemCounts[loc] = n;
+
+                const container = document.getElementById(`invOpItemsContainer-${loc}`);
+                const div = document.createElement('div');
+                div.className = 'inv-op-item-box';
+                div.id = `invOpItemBox${n}-${loc}`;
+                div.style.cssText = 'border-top:1px solid #eec96b; padding-top:10px; margin-top:10px;';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="font-weight:bold; font-size:12px; color:#856404;">Item ${n}</span>
+                        <button type="button" class="btn btn-danger" style="padding:4px 9px; font-size:11px;" onclick="removeOpnameItem('${loc}', ${n})">Hapus</button>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invOpCode${n}-${loc}" placeholder="Kode/part number"></div>
+                        <div class="form-group"><label>Nama Sparepart</label><input id="invOpName${n}-${loc}" placeholder="Nama sparepart"></div>
+                        <div class="form-group"><label>Jumlah Hasil Hitung Fisik <span class="required">*</span></label><input type="number" min="0" id="invOpQty${n}-${loc}"></div>
+                        <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invOpNote${n}-${loc}" placeholder="Opsional"></div>
+                    </div>
+                `;
+                container.appendChild(div);
+            }
+
+            function removeOpnameItem(loc, n) {
+                const container = document.getElementById(`invOpItemsContainer-${loc}`);
+                if (container.children.length <= 1) return;
+                document.getElementById(`invOpItemBox${n}-${loc}`)?.remove();
+            }
+
+            async function downloadOpnameTemplate(loc) {
+                try {
+                    const res = await authFetch(`/api/v1/inventory-parts/opname/template?location=${loc}`);
+                    if (!res.ok) throw new Error('Gagal mengunduh contoh format.');
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Contoh_Format_Upload_Stok_Opname_${loc}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                } catch(e) { alert(e.message); }
+            }
+
+            async function handleOpnameBulkFile(loc, input) {
+                const file = input.files[0];
+                if (!file) return;
+                const formData = new FormData();
+                formData.append('location', loc);
+                formData.append('file', file);
+
+                try {
+                    const res = await authFetch('/api/v1/inventory-parts/opname/bulk-upload', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Gagal upload massal.');
+                    let msg = `Upload selesai.\\nTotal baris diproses: ${data.total_baris_diproses}\\nBerhasil: ${data.berhasil}\\nGagal: ${data.gagal}`;
+                    if (data.detail_gagal && data.detail_gagal.length) {
+                        msg += '\\n\\nDetail gagal:\\n' + data.detail_gagal.map(f => `Baris ${f.row}: ${f.reason}`).join('\\n');
+                    }
+                    alert(msg);
+                    renderInventoryStock(loc);
+                } catch(e) {
+                    alert(e.message);
+                } finally {
+                    input.value = '';
                 }
             }
 
@@ -2673,38 +2756,61 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
             }
 
             async function submitOpname(loc) {
-                const code = valOf(`invOpCode-${loc}`);
-                const qty = valOf(`invOpQty-${loc}`);
-                if (!code || qty === '') return alert('Kode Sparepart dan Jumlah Hasil Hitung Fisik wajib diisi.');
                 if (loc === 'cabang' && !valOf(`invOpBranchName-${loc}`)) return alert('Nama Cabang wajib diisi.');
-                const btn = document.getElementById(`invOpnameSaveBtn-${loc}`);
-                if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
-                const payload = {
-                    location: loc,
-                    code: code,
-                    name: valOf(`invOpName-${loc}`) || null,
-                    counted_quantity: parseInt(qty),
-                    note: valOf(`invOpNote-${loc}`) || null,
-                    branch_name: loc === 'cabang' ? (valOf(`invOpBranchName-${loc}`) || null) : null,
-                };
-
-                try {
-                    const res = await authFetch('/api/v1/inventory-parts/opname', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan stok opname.');
-                    alert(`Stok Opname tersimpan.\\nStok sistem sebelumnya: ${data.system_quantity}\\nHasil hitung fisik: ${data.counted_quantity}\\nSelisih: ${data.difference}`);
-                    toggleOpnameForm(loc);
-                    renderInventoryStock(loc);
-                } catch(e) {
-                    alert(e.message);
-                } finally {
-                    restoreButton(btn);
+                const itemCount = opnameItemCounts[loc] || 0;
+                const activeItemNumbers = [];
+                for (let n = 1; n <= itemCount; n++) {
+                    if (document.getElementById(`invOpItemBox${n}-${loc}`)) activeItemNumbers.push(n);
                 }
+
+                const items = [];
+                for (const n of activeItemNumbers) {
+                    const code = valOf(`invOpCode${n}-${loc}`);
+                    const qty = valOf(`invOpQty${n}-${loc}`);
+                    if (!code || qty === '') {
+                        return alert(`Item ${n}: Kode Sparepart dan Jumlah Hasil Hitung Fisik wajib diisi.`);
+                    }
+                    items.push({
+                        code: code,
+                        name: valOf(`invOpName${n}-${loc}`) || null,
+                        counted_quantity: parseInt(qty),
+                        note: valOf(`invOpNote${n}-${loc}`) || null,
+                    });
+                }
+                if (items.length === 0) return alert('Isi minimal 1 item sparepart.');
+
+                const btn = document.getElementById(`invOpnameSaveBtn-${loc}`);
+                if (!setButtonLoading(btn, `Menyimpan ${items.length} item...`)) return;
+
+                const branchName = loc === 'cabang' ? (valOf(`invOpBranchName-${loc}`) || null) : null;
+                let successCount = 0;
+                const failures = [];
+                for (const item of items) {
+                    const payload = { location: loc, branch_name: branchName, ...item };
+                    try {
+                        const res = await authFetch('/api/v1/inventory-parts/opname', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan.');
+                        successCount++;
+                    } catch(e) {
+                        failures.push(`${item.code}: ${e.message}`);
+                    }
+                }
+
+                restoreButton(btn);
+
+                if (failures.length === 0) {
+                    alert(`Berhasil! ${successCount} item stok opname tersimpan di ${loc.toUpperCase()}.`);
+                    toggleOpnameForm(loc);
+                } else {
+                    alert(`${successCount} item berhasil, ${failures.length} item GAGAL:\\n\\n${failures.join('\\n')}`);
+                }
+                renderInventoryStock(loc);
             }
 
             let inventoryStockCache = {}; // { [loc]: data mentah dari server, sblm difilter }
