@@ -1888,9 +1888,6 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     const reportOptions = INVENTORY_REPORTS[loc]
                         .map((r, idx) => `<option value="${idx}">${r.label}</option>`)
                         .join('\\n');
-                    const bulkUploadOptions = INVENTORY_ACTIONS[loc]
-                        .map(a => `<option value="${a.type}">${a.label} (Excel)</option>`)
-                        .join('\\n');
 
                     root.innerHTML = `
                         <div class="card">
@@ -1902,13 +1899,12 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 </div>
                             </div>
 
-                            <div style="display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:#f8f9fa; padding:10px; border-radius:6px;">
+                            <div id="invBulkUploadBar-${loc}" class="hidden" style="display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:#f8f9fa; padding:10px; border-radius:6px;">
                                 <span style="font-size:12px; color:#666; margin-right:auto;">Update banyak sparepart sekaligus lewat Excel:</span>
                                 <button class="btn btn-secondary" onclick="downloadMovementTemplate('terima')">📄 Contoh Format Terima</button>
                                 <button class="btn btn-secondary" onclick="downloadMovementTemplate('kirim')">📄 Contoh Format Kirim</button>
-                                <select onchange="if(this.value !== ''){ prepareMovementBulkUpload('${loc}', this.value); this.selectedIndex = 0; }">
+                                <select id="invBulkSelect-${loc}" onchange="if(this.value !== ''){ prepareMovementBulkUpload('${loc}', this.value); this.selectedIndex = 0; }">
                                     <option value="">📤 Upload Massal Excel ▾</option>
-                                    ${bulkUploadOptions}
                                 </select>
                                 <input type="file" id="invBulkFileInput-${loc}" accept=".xlsx,.xlsm" style="display:none;" onchange="handleMovementBulkFile('${loc}', this)">
                             </div>
@@ -1929,25 +1925,16 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                             <div id="invMovementFormBox-${loc}" class="hidden" style="background:#f8f9fa; border:1px dashed #ccc; padding:10px; border-radius:6px; margin-bottom:15px;">
                                 <div style="font-weight:bold; color:#0056b3; margin-bottom:8px;" id="invMovementTitle-${loc}"></div>
-                                <div class="form-grid">
-                                    <div class="form-group"><label>Nama Sparepart</label><input id="invName-${loc}" placeholder="Nama sparepart"></div>
-                                    <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invCode-${loc}" placeholder="Kode/part number"></div>
-                                    <div class="form-group"><label>Status</label>
-                                        <select id="invStatus-${loc}">
-                                            <option value="">-- Opsional --</option>
-                                            <option value="Active">Active</option>
-                                            <option value="Discontinue">Discontinue</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group"><label>Model Alat</label><input id="invDeviceModel-${loc}" placeholder="Opsional, mis. HEM-7120"></div>
-                                    <div class="form-group"><label>Jumlah <span class="required">*</span></label><input type="number" min="1" id="invQty-${loc}"></div>
-                                    <div class="form-group hidden" id="invBranchWrap-${loc}">
-                                        <label id="invBranchLabel-${loc}">Cabang</label>
-                                        <select id="invBranch-${loc}"><option value="">-- Pilih Cabang --</option></select>
-                                    </div>
-                                    <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invNote-${loc}" placeholder="Opsional"></div>
+                                <div class="form-group hidden" id="invBranchWrap-${loc}" style="max-width:320px;">
+                                    <label id="invBranchLabel-${loc}">Cabang</label>
+                                    <select id="invBranch-${loc}"><option value="">-- Pilih Cabang --</option></select>
                                 </div>
-                                <div style="display:flex; gap:10px; justify-content:flex-end;">
+
+                                <!-- Item sparepart - bisa lebih dari 1 sebelum disimpan, lihat +Add Item -->
+                                <div id="invItemsContainer-${loc}"></div>
+
+                                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:10px;">
+                                    <button class="btn btn-secondary" onclick="addInventoryItem('${loc}')">+ Add Item</button>
                                     <button class="btn btn-secondary" onclick="closeMovementForm('${loc}')">Batal</button>
                                     <button class="btn btn-success" id="invMovementSaveBtn-${loc}" onclick="submitMovement('${loc}')">Simpan</button>
                                 </div>
@@ -2446,12 +2433,6 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 document.getElementById(`invOpnameFormBox-${loc}`).classList.add('hidden');
                 currentMovementType[loc] = type;
                 document.getElementById(`invMovementTitle-${loc}`).innerText = label;
-                setVal(`invCode-${loc}`, '');
-                setVal(`invName-${loc}`, '');
-                setVal(`invStatus-${loc}`, '');
-                setVal(`invDeviceModel-${loc}`, '');
-                setVal(`invQty-${loc}`, '');
-                setVal(`invNote-${loc}`, '');
 
                 const branchWrap = document.getElementById(`invBranchWrap-${loc}`);
                 const branchFieldLabel = BRANCH_FIELD_CONFIG[type];
@@ -2465,7 +2446,26 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     setVal(`invBranch-${loc}`, '');
                 }
 
+                // Selalu mulai dgn TEPAT 1 item kosong setiap kali form dibuka baru
+                // (baik ganti jenis pergerakan, maupun buka ulang dari tombol +).
+                document.getElementById(`invItemsContainer-${loc}`).innerHTML = '';
+                inventoryItemCounts[loc] = 0;
+                addInventoryItem(loc);
+
                 document.getElementById(`invMovementFormBox-${loc}`).classList.remove('hidden');
+
+                // Bar "Upload Massal Excel" SEKARANG baru muncul setelah tombol
+                // +Terima/+Kirim diklik (sebelumnya selalu tampil di halaman) -
+                // isi dropdown-nya juga difilter, cuma opsi yg SEKATEGORI dgn
+                // tombol yg baru diklik (Terima -> Terima saja, Kirim -> Kirim saja).
+                const category = type.startsWith('terima') ? 'terima' : 'kirim';
+                const filteredOptions = INVENTORY_ACTIONS[loc]
+                    .filter(a => a.type.startsWith(category))
+                    .map(a => `<option value="${a.type}">${a.label} (Excel)</option>`)
+                    .join('');
+                document.getElementById(`invBulkSelect-${loc}`).innerHTML =
+                    '<option value="">📤 Upload Massal Excel ▾</option>' + filteredOptions;
+                document.getElementById(`invBulkUploadBar-${loc}`).classList.remove('hidden');
             }
 
             async function populateBranchSelect(loc) {
@@ -2486,10 +2486,12 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
             function closeMovementForm(loc) {
                 document.getElementById(`invMovementFormBox-${loc}`).classList.add('hidden');
+                document.getElementById(`invBulkUploadBar-${loc}`).classList.add('hidden');
             }
 
             function toggleOpnameForm(loc) {
                 document.getElementById(`invMovementFormBox-${loc}`).classList.add('hidden');
+                document.getElementById(`invBulkUploadBar-${loc}`).classList.add('hidden');
                 const box = document.getElementById(`invOpnameFormBox-${loc}`);
                 box.classList.toggle('hidden');
                 if (!box.classList.contains('hidden')) {
@@ -2500,10 +2502,74 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 }
             }
 
+            let inventoryItemCounts = {}; // { [locKey]: jumlah item yg sedang ditampilkan }
+
+            function addInventoryItem(loc) {
+                const n = (inventoryItemCounts[loc] || 0) + 1;
+                inventoryItemCounts[loc] = n;
+
+                const container = document.getElementById(`invItemsContainer-${loc}`);
+                const div = document.createElement('div');
+                div.className = 'inv-item-box';
+                div.id = `invItemBox${n}-${loc}`;
+                div.style.cssText = 'border-top:1px solid #ddd; padding-top:10px; margin-top:10px;';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="font-weight:bold; font-size:12px; color:#0056b3;">Item ${n}</span>
+                        <button type="button" class="btn btn-danger" style="padding:4px 9px; font-size:11px;" onclick="removeInventoryItem('${loc}', ${n})">Hapus</button>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Nama Sparepart</label><input id="invName${n}-${loc}" placeholder="Nama sparepart"></div>
+                        <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invCode${n}-${loc}" placeholder="Kode/part number"></div>
+                        <div class="form-group"><label>Status</label>
+                            <select id="invStatus${n}-${loc}">
+                                <option value="">-- Opsional --</option>
+                                <option value="Active">Active</option>
+                                <option value="Discontinue">Discontinue</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Model Alat</label><input id="invDeviceModel${n}-${loc}" placeholder="Opsional, mis. HEM-7120"></div>
+                        <div class="form-group"><label>Jumlah <span class="required">*</span></label><input type="number" min="1" id="invQty${n}-${loc}"></div>
+                        <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invNote${n}-${loc}" placeholder="Opsional"></div>
+                    </div>
+                `;
+                container.appendChild(div);
+            }
+
+            function removeInventoryItem(loc, n) {
+                // Minimal 1 item wajib tersisa - kalau ini item terakhir, jangan dihapus.
+                const container = document.getElementById(`invItemsContainer-${loc}`);
+                if (container.children.length <= 1) return;
+                document.getElementById(`invItemBox${n}-${loc}`)?.remove();
+            }
+
             async function submitMovement(loc) {
-                const code = valOf(`invCode-${loc}`);
-                const qty = valOf(`invQty-${loc}`);
-                if (!code || !qty) return alert('Kode Sparepart dan Jumlah wajib diisi.');
+                const itemCount = inventoryItemCounts[loc] || 0;
+                const container = document.getElementById(`invItemsContainer-${loc}`);
+                // Ambil HANYA nomor item yg box-nya masih benar-benar ada di DOM
+                // (yg sudah dihapus lewat tombol Hapus tidak ikut dikumpulkan).
+                const activeItemNumbers = [];
+                for (let n = 1; n <= itemCount; n++) {
+                    if (document.getElementById(`invItemBox${n}-${loc}`)) activeItemNumbers.push(n);
+                }
+
+                const items = [];
+                for (const n of activeItemNumbers) {
+                    const code = valOf(`invCode${n}-${loc}`);
+                    const qty = valOf(`invQty${n}-${loc}`);
+                    if (!code || !qty) {
+                        return alert(`Item ${n}: Kode Sparepart dan Jumlah wajib diisi.`);
+                    }
+                    items.push({
+                        code: code,
+                        name: valOf(`invName${n}-${loc}`) || null,
+                        quantity: parseInt(qty),
+                        note: valOf(`invNote${n}-${loc}`) || null,
+                        device_model: valOf(`invDeviceModel${n}-${loc}`) || null,
+                        part_status: valOf(`invStatus${n}-${loc}`) || null,
+                    });
+                }
+                if (items.length === 0) return alert('Isi minimal 1 item sparepart.');
 
                 const movementType = currentMovementType[loc];
                 const branchFieldLabel = BRANCH_FIELD_CONFIG[movementType];
@@ -2511,37 +2577,47 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (branchFieldLabel && !relatedBranch) {
                     return alert(`${branchFieldLabel} wajib dipilih untuk pergerakan ini.`);
                 }
+
                 const btn = document.getElementById(`invMovementSaveBtn-${loc}`);
-                if (!setButtonLoading(btn, 'Menyimpan...')) return;
+                if (!setButtonLoading(btn, `Menyimpan ${items.length} item...`)) return;
 
-                const payload = {
-                    location: loc,
-                    movement_type: movementType,
-                    code: code,
-                    name: valOf(`invName-${loc}`) || null,
-                    quantity: parseInt(qty),
-                    note: valOf(`invNote-${loc}`) || null,
-                    device_model: valOf(`invDeviceModel-${loc}`) || null,
-                    part_status: valOf(`invStatus-${loc}`) || null,
-                    related_branch: relatedBranch || null,
-                };
-
-                try {
-                    const res = await authFetch('/api/v1/inventory-parts/movement', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan pergerakan stok.');
-                    alert(`Berhasil! Stok ${data.code} di ${loc.toUpperCase()} sekarang: ${data.new_quantity}`);
-                    closeMovementForm(loc);
-                    renderInventoryStock(loc);
-                } catch(e) {
-                    alert(e.message);
-                } finally {
-                    restoreButton(btn);
+                // Kirim SATU PER SATU (bukan 1 request gabungan) - endpoint backend
+                // memang dirancang utk 1 pergerakan per panggilan, jadi di sini kita
+                // loop saja. Kalau ada yg gagal di tengah, tetap lanjut ke item
+                // berikutnya, lalu laporkan ringkasan berhasil/gagal di akhir -
+                // bukan berhenti total hanya krn 1 item bermasalah.
+                let successCount = 0;
+                const failures = [];
+                for (const item of items) {
+                    const payload = {
+                        location: loc,
+                        movement_type: movementType,
+                        related_branch: relatedBranch || null,
+                        ...item,
+                    };
+                    try {
+                        const res = await authFetch('/api/v1/inventory-parts/movement', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.detail || 'Gagal menyimpan.');
+                        successCount++;
+                    } catch(e) {
+                        failures.push(`${item.code}: ${e.message}`);
+                    }
                 }
+
+                restoreButton(btn);
+
+                if (failures.length === 0) {
+                    alert(`Berhasil! ${successCount} item sparepart tersimpan di ${loc.toUpperCase()}.`);
+                    closeMovementForm(loc);
+                } else {
+                    alert(`${successCount} item berhasil, ${failures.length} item GAGAL:\\n\\n${failures.join('\\n')}`);
+                }
+                renderInventoryStock(loc);
             }
 
             async function submitOpname(loc) {
