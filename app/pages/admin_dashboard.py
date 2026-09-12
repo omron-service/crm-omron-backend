@@ -2521,16 +2521,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     <div class="form-grid">
                         <div class="form-group"><label>Nama Sparepart</label><input id="invName${n}-${loc}" placeholder="Nama sparepart"></div>
                         <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invCode${n}-${loc}" placeholder="Kode/part number"></div>
-                        <div class="form-group"><label>Status</label>
-                            <select id="invStatus${n}-${loc}">
-                                <option value="">-- Opsional --</option>
-                                <option value="Active">Active</option>
-                                <option value="Discontinue">Discontinue</option>
-                            </select>
-                        </div>
-                        <div class="form-group"><label>Model Alat</label><input id="invDeviceModel${n}-${loc}" placeholder="Opsional, mis. HEM-7120"></div>
                         <div class="form-group"><label>Jumlah <span class="required">*</span></label><input type="number" min="1" id="invQty${n}-${loc}"></div>
-                        <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><input id="invNote${n}-${loc}" placeholder="Opsional"></div>
                     </div>
                 `;
                 container.appendChild(div);
@@ -2564,9 +2555,6 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                         code: code,
                         name: valOf(`invName${n}-${loc}`) || null,
                         quantity: parseInt(qty),
-                        note: valOf(`invNote${n}-${loc}`) || null,
-                        device_model: valOf(`invDeviceModel${n}-${loc}`) || null,
-                        part_status: valOf(`invStatus${n}-${loc}`) || null,
                     });
                 }
                 if (items.length === 0) return alert('Isi minimal 1 item sparepart.');
