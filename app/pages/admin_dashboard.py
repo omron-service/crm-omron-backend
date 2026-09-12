@@ -750,6 +750,13 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                             <div class="form-section-title">1. Data Pelanggan</div>
                             <div class="form-grid">
                                 <div class="form-group"><label>Nama Customer <span class="required">*</span></label><input id="inpName-${k}" placeholder="Contoh: Budi Santoso"></div>
+                                ${k === 'cabang' ? `
+                                <div class="form-group" id="inpBranchNameWrap-${k}">
+                                    <label>Nama Cabang <span class="required">*</span></label>
+                                    <input id="inpBranchName-${k}" list="inpBranchNameList-${k}" placeholder="Pilih/ketik nama cabang">
+                                    <datalist id="inpBranchNameList-${k}"></datalist>
+                                </div>
+                                ` : ''}
                                 <div class="form-group">
                                     <label>Nama Instansi</label>
                                     <input id="inpInstansi-${k}" placeholder="Contoh: RS Harapan Bunda" ${k === 'pickup' ? 'list="inpInstansiList-pickup"' : ''}>
@@ -1065,6 +1072,25 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 } catch(e) { /* diamkan - field tetap bisa diisi manual */ }
             }
 
+            let branchNameDatalistCache = null;
+            async function loadBranchNameDatalist(datalistId) {
+                try {
+                    if (!branchNameDatalistCache) {
+                        const res = await authFetch('/api/v1/branches/');
+                        branchNameDatalistCache = res.ok ? await res.json() : [];
+                    }
+                    const el = document.getElementById(datalistId);
+                    if (el) el.innerHTML = branchNameDatalistCache.map(b => `<option value="${esc(b.name)}">`).join('');
+                } catch(e) { /* diamkan - field tetap bisa diisi manual */ }
+            }
+
+            let ticketBranchOptionsLoaded = false;
+            async function loadTicketBranchNameOptions() {
+                if (ticketBranchOptionsLoaded) return;
+                await loadBranchNameDatalist('inpBranchNameList-cabang');
+                ticketBranchOptionsLoaded = true;
+            }
+
             function showFormInPage(locKey) {
                 currentEditingTicket[locKey] = null; // mode CREATE (bukan edit)
                 resetTicketForm(locKey);
@@ -1076,6 +1102,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     `Simpan ke Data ${loc.label.toUpperCase()}`;
 
                 if (locKey === 'pickup') loadPickupInstansiOptions();
+                if (locKey === 'cabang') loadTicketBranchNameOptions();
 
                 document.getElementById('view-table-service-' + locKey).classList.add('hidden');
                 document.getElementById('view-form-service-' + locKey).classList.remove('hidden');
@@ -1087,6 +1114,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 // bukan POST (create baru).
                 try {
                     if (locKey === 'pickup') loadPickupInstansiOptions();
+                    if (locKey === 'cabang') loadTicketBranchNameOptions();
                     const res = await authFetch(`/api/v1/db/tickets/detail/${encodeURIComponent(ticketNumber)}`);
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
@@ -1111,6 +1139,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const k = locKey;
                 setVal(`inpName-${k}`, t.customer_name || '');
                 setVal(`inpInstansi-${k}`, t.instansi_name || '');
+                setVal(`inpBranchName-${k}`, t.branch_name || '');
                 setVal(`inpPhone1-${k}`, t.customer_phone || '');
                 setVal(`inpPhone2-${k}`, t.customer_phone_2 || '');
                 setVal(`inpAddress-${k}`, t.customer_address || '');
@@ -1204,6 +1233,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
 
                 setVal(`inpName-${k}`, '');
                 setVal(`inpInstansi-${k}`, '');
+                setVal(`inpBranchName-${k}`, '');
                 setVal(`inpPhone1-${k}`, '');
                 setVal(`inpPhone2-${k}`, '');
                 setVal(`inpAddress-${k}`, '');
@@ -1298,6 +1328,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const phone1 = valOf(`inpPhone1-${k}`);
 
                 if (!name || !phone1) return alert('Nama Customer dan No. HP/WhatsApp 1 Wajib Diisi!');
+                if (k === 'cabang' && !valOf(`inpBranchName-${k}`)) return alert('Nama Cabang Wajib Diisi untuk tiket di Cabang!');
                 if (!setButtonLoading(btn, 'Menyimpan...')) return; // cegah klik ganda -> tiket/data dobel
 
                 const spareparts = [1, 2, 3].map(n => ({
@@ -1311,6 +1342,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     service_type: k,
                     customer_name: name,
                     instansi_name: valOf(`inpInstansi-${k}`) || null,
+                    branch_name: k === 'cabang' ? (valOf(`inpBranchName-${k}`) || null) : null,
                     customer_phone: phone1,
                     customer_phone_2: valOf(`inpPhone2-${k}`) || null,
                     customer_address: valOf(`inpAddress-${k}`) || null,
@@ -1943,6 +1975,13 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                             <div id="invOpnameFormBox-${loc}" class="hidden" style="background:#fff3cd; border:1px dashed #ffc107; padding:10px; border-radius:6px; margin-bottom:15px;">
                                 <div style="font-weight:bold; color:#856404; margin-bottom:8px;">Stok Opname (Hitung Fisik) - ${label}</div>
                                 <div class="form-grid">
+                                    ${loc === 'cabang' ? `
+                                    <div class="form-group">
+                                        <label>Nama Cabang <span class="required">*</span></label>
+                                        <input id="invOpBranchName-${loc}" list="invOpBranchNameList-${loc}" placeholder="Pilih/ketik nama cabang">
+                                        <datalist id="invOpBranchNameList-${loc}"></datalist>
+                                    </div>
+                                    ` : ''}
                                     <div class="form-group"><label>Kode Sparepart <span class="required">*</span></label><input id="invOpCode-${loc}" placeholder="Kode/part number"></div>
                                     <div class="form-group"><label>Nama Sparepart</label><input id="invOpName-${loc}" placeholder="Nama sparepart"></div>
                                     <div class="form-group"><label>Jumlah Hasil Hitung Fisik <span class="required">*</span></label><input type="number" min="0" id="invOpQty-${loc}"></div>
@@ -1954,8 +1993,25 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 </div>
                             </div>
 
+                            <div class="form-grid" style="margin-bottom:12px; max-width:500px;">
+                                <div class="form-group">
+                                    <label>Filter Model Alat</label>
+                                    <select id="invFilterModel-${loc}" onchange="applyInventoryFilter('${loc}')">
+                                        <option value="">-- Semua Model Alat --</option>
+                                    </select>
+                                </div>
+                                ${loc === 'cabang' ? `
+                                <div class="form-group hidden" id="invFilterBranchWrap-${loc}">
+                                    <label>Filter Nama Cabang</label>
+                                    <select id="invFilterBranch-${loc}" onchange="applyInventoryFilter('${loc}')">
+                                        <option value="">-- Semua Cabang --</option>
+                                    </select>
+                                </div>
+                                ` : ''}
+                            </div>
+
                             <table>
-                                <thead><tr><th>Kode</th><th>Nama Sparepart</th><th>Model Alat</th><th>Status</th><th>Jumlah Stok</th><th>Harga Satuan</th><th>Update Terakhir</th></tr></thead>
+                                <thead><tr><th>Kode</th><th>Nama Sparepart</th><th>Model Alat</th>${loc === 'cabang' ? '<th>Nama Cabang</th>' : ''}<th>Status</th><th>Jumlah Stok</th><th>Harga Satuan</th><th>Update Terakhir</th></tr></thead>
                                 <tbody id="tableInventory-${loc}"></tbody>
                             </table>
                         </div>
@@ -2421,11 +2477,15 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 }
             }
 
-            // Jenis pergerakan yang butuh dropdown Cabang, dan label yang sesuai
-            // ("Cabang Tujuan" untuk kirim, "Cabang Asal" untuk terima).
+            // Jenis pergerakan yang butuh dropdown Cabang, dan label yang sesuai.
+            // SEMUA 4 jenis kini wajib - termasuk 2 yang dibuat LANGSUNG oleh
+            // staff Cabang dari tab mereka sendiri (bukan hasil mirror dari
+            // Pusat), karena staff Cabang tidak terikat ke 1 nama cabang tetap.
             const BRANCH_FIELD_CONFIG = {
                 kirim_ke_cabang: 'Cabang Tujuan',
                 terima_dari_cabang: 'Cabang Asal',
+                terima_dari_pusat: 'Nama Cabang (cabang Anda)',
+                kirim_balik_ke_pusat: 'Nama Cabang (cabang Anda)',
             };
             let branchListCache = null;
 
@@ -2499,6 +2559,10 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     setVal(`invOpName-${loc}`, '');
                     setVal(`invOpQty-${loc}`, '');
                     setVal(`invOpNote-${loc}`, '');
+                    if (loc === 'cabang') {
+                        setVal(`invOpBranchName-${loc}`, '');
+                        loadBranchNameDatalist(`invOpBranchNameList-${loc}`);
+                    }
                 }
             }
 
@@ -2612,6 +2676,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 const code = valOf(`invOpCode-${loc}`);
                 const qty = valOf(`invOpQty-${loc}`);
                 if (!code || qty === '') return alert('Kode Sparepart dan Jumlah Hasil Hitung Fisik wajib diisi.');
+                if (loc === 'cabang' && !valOf(`invOpBranchName-${loc}`)) return alert('Nama Cabang wajib diisi.');
                 const btn = document.getElementById(`invOpnameSaveBtn-${loc}`);
                 if (!setButtonLoading(btn, 'Menyimpan...')) return;
 
@@ -2621,6 +2686,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                     name: valOf(`invOpName-${loc}`) || null,
                     counted_quantity: parseInt(qty),
                     note: valOf(`invOpNote-${loc}`) || null,
+                    branch_name: loc === 'cabang' ? (valOf(`invOpBranchName-${loc}`) || null) : null,
                 };
 
                 try {
@@ -2641,24 +2707,75 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 }
             }
 
+            let inventoryStockCache = {}; // { [loc]: data mentah dari server, sblm difilter }
+
             async function renderInventoryStock(loc) {
                 try {
                     const res = await authFetch(`/api/v1/inventory-parts/stock/${loc}`);
                     const el = document.getElementById(`tableInventory-${loc}`);
                     if (!res.ok || !el) return;
                     const data = await res.json();
-                    el.innerHTML = data.length ? data.map(d => `
-                        <tr>
-                            <td><strong>${esc(d.code)}</strong></td>
-                            <td>${esc(d.name) || '-'}</td>
-                            <td>${esc(d.model_alat) || '-'}</td>
-                            <td>${d.status ? `<span class="badge ${d.status === 'Active' ? 'badge-active' : 'badge-inactive'}">${esc(d.status)}</span>` : '-'}</td>
-                            <td>${d.quantity}</td>
-                            <td>Rp ${(d.unit_price || 0).toLocaleString('id-ID')}</td>
-                            <td>${d.updated_at ? d.updated_at.split('T')[0] : '-'}</td>
-                        </tr>
-                    `).join('') : `<tr><td colspan="7" style="text-align:center;">Belum ada sparepart di lokasi ini</td></tr>`;
+                    inventoryStockCache[loc] = data;
+
+                    // Isi ulang pilihan Filter Model Alat dari data yg BENAR-BENAR ada
+                    // (bukan daftar tetap) - sesuai permintaan.
+                    const modelSelect = document.getElementById(`invFilterModel-${loc}`);
+                    const currentModelVal = modelSelect.value;
+                    const distinctModels = [...new Set(data.map(d => d.model_alat).filter(Boolean))].sort();
+                    modelSelect.innerHTML = '<option value="">-- Semua Model Alat --</option>' +
+                        distinctModels.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+                    if (distinctModels.includes(currentModelVal)) modelSelect.value = currentModelVal;
+
+                    if (loc === 'cabang') {
+                        // Filter Nama Cabang HANYA tampil utk akun yang mengelola LEBIH
+                        // dari 1 cabang (Pusat/Admin/Super Admin) - staff yg akunnya
+                        // sendiri terikat departemen "cabang" tidak perlu filter
+                        // lintas-cabang krn mereka memang cuma kerja di 1 cabang.
+                        const branchFilterWrap = document.getElementById(`invFilterBranchWrap-${loc}`);
+                        const showBranchFilter = !(currentRole === 'staff' && currentDept === 'cabang');
+                        branchFilterWrap.classList.toggle('hidden', !showBranchFilter);
+
+                        if (showBranchFilter) {
+                            const branchSelect = document.getElementById(`invFilterBranch-${loc}`);
+                            const currentBranchVal = branchSelect.value;
+                            const distinctBranches = [...new Set(data.map(d => d.branch_name).filter(Boolean))].sort();
+                            branchSelect.innerHTML = '<option value="">-- Semua Cabang --</option>' +
+                                distinctBranches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+                            if (distinctBranches.includes(currentBranchVal)) branchSelect.value = currentBranchVal;
+                        }
+                    }
+
+                    applyInventoryFilter(loc);
                 } catch(e) { console.error(e); }
+            }
+
+            function applyInventoryFilter(loc) {
+                const el = document.getElementById(`tableInventory-${loc}`);
+                const data = inventoryStockCache[loc] || [];
+                if (!el) return;
+
+                const modelFilter = valOf(`invFilterModel-${loc}`);
+                const branchFilterEl = document.getElementById(`invFilterBranch-${loc}`);
+                const branchFilter = branchFilterEl ? branchFilterEl.value : '';
+
+                const filtered = data.filter(d => {
+                    if (modelFilter && d.model_alat !== modelFilter) return false;
+                    if (loc === 'cabang' && branchFilter && d.branch_name !== branchFilter) return false;
+                    return true;
+                });
+
+                el.innerHTML = filtered.length ? filtered.map(d => `
+                    <tr>
+                        <td><strong>${esc(d.code)}</strong></td>
+                        <td>${esc(d.name) || '-'}</td>
+                        <td>${esc(d.model_alat) || '-'}</td>
+                        ${loc === 'cabang' ? `<td>${esc(d.branch_name) || '-'}</td>` : ''}
+                        <td>${d.status ? `<span class="badge ${d.status === 'Active' ? 'badge-active' : 'badge-inactive'}">${esc(d.status)}</span>` : '-'}</td>
+                        <td>${d.quantity}</td>
+                        <td>Rp ${(d.unit_price || 0).toLocaleString('id-ID')}</td>
+                        <td>${d.updated_at ? d.updated_at.split('T')[0] : '-'}</td>
+                    </tr>
+                `).join('') : `<tr><td colspan="${loc === 'cabang' ? 8 : 7}" style="text-align:center;">Belum ada sparepart yang cocok dengan filter ini</td></tr>`;
             }
 
             async function downloadInventoryReport(loc, idx) {
