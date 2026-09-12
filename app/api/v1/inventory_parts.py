@@ -59,7 +59,19 @@ MOVEMENT_LABELS = {
 # Jenis pergerakan yang WAJIB menyertakan nama Cabang (asal/tujuan) - karena
 # sekarang ada banyak cabang (lihat menu Kelola Cabang), jadi harus jelas
 # cabang MANA yang jadi asal/tujuan pengiriman part, bukan cuma "cabang" secara umum.
-BRANCH_REQUIRED_TYPES = {"kirim_ke_cabang", "terima_dari_cabang"}
+# SEMUA 4 jenis pergerakan yang menyentuh Cabang kini wajib - termasuk 2 yang
+# dibuat LANGSUNG oleh staff Cabang dari tab mereka sendiri (bukan hasil
+# mirror dari Pusat), karena staff Cabang juga tidak terikat ke 1 nama cabang
+# spesifik di akun mereka - jadi harus pilih manual setiap kali.
+BRANCH_REQUIRED_TYPES = {"kirim_ke_cabang", "terima_dari_cabang", "terima_dari_pusat", "kirim_balik_ke_pusat"}
+
+# Label field "Nama Cabang" yang sesuai utk masing-masing dari 4 jenis pergerakan.
+MOVEMENT_BRANCH_LABEL = {
+    "kirim_ke_cabang": "Cabang Tujuan",
+    "terima_dari_cabang": "Cabang Asal",
+    "terima_dari_pusat": "Nama Cabang (cabang Anda)",
+    "kirim_balik_ke_pusat": "Nama Cabang (cabang Anda)",
+}
 
 # Nilai "Status" sparepart yang valid (sesuai keputusan bisnis).
 VALID_PART_STATUS = {"active", "discontinue"}
@@ -94,6 +106,7 @@ class OpnameIn(BaseModel):
     name: Optional[str] = None
     counted_quantity: int = Field(..., ge=0)
     note: Optional[str] = None
+    branch_name: Optional[str] = None  # WAJIB kalau location="cabang"
 
 
 def _get_or_create_part(db: Session, code: str, name: Optional[str], part_cache: Optional[dict] = None) -> PartCatalog:
@@ -116,19 +129,21 @@ def _get_or_create_part(db: Session, code: str, name: Optional[str], part_cache:
     return part
 
 
-def _get_or_create_stock_row(db: Session, part_id: int, location: str, stock_cache: Optional[dict] = None) -> PartStock:
-    cache_key = (part_id, location)
+def _get_or_create_stock_row(db: Session, part_id: int, location: str, branch_name: str = "", stock_cache: Optional[dict] = None) -> PartStock:
+    # branch_name HANYA relevan utk location="cabang" - "pusat" selalu "" (satu kolam).
+    effective_branch = (branch_name or "").strip() if location == "cabang" else ""
+    cache_key = (part_id, location, effective_branch)
     if stock_cache is not None and cache_key in stock_cache:
         return stock_cache[cache_key]
 
     stock = (
         db.query(PartStock)
-        .filter(PartStock.part_id == part_id, PartStock.location == location)
+        .filter(PartStock.part_id == part_id, PartStock.location == location, PartStock.branch_name == effective_branch)
         .with_for_update()
         .first()
     )
     if stock is None:
-        stock = PartStock(part_id=part_id, location=location, quantity=0)
+        stock = PartStock(part_id=part_id, location=location, branch_name=effective_branch, quantity=0)
         db.add(stock)
         db.flush()
 
@@ -152,7 +167,7 @@ def get_stock_list(
         db.query(PartStock, PartCatalog)
         .join(PartCatalog, PartStock.part_id == PartCatalog.id)
         .filter(PartStock.location == loc)
-        .order_by(PartCatalog.name)
+        .order_by(PartCatalog.name, PartStock.branch_name)
         .all()
     )
     return [
@@ -163,6 +178,7 @@ def get_stock_list(
             "unit_price": part.unit_price,
             "status": part.status,
             "model_alat": part.model_alat,
+            "branch_name": stock.branch_name or None,  # None/kosong utk lokasi "pusat" (1 kolam)
             "quantity": stock.quantity,
             "updated_at": stock.updated_at,
         }
@@ -205,7 +221,7 @@ def _apply_single_movement(
 
     if movement_type in BRANCH_REQUIRED_TYPES:
         if not (related_branch and related_branch.strip()):
-            label = "Cabang Tujuan" if movement_type == "kirim_ke_cabang" else "Cabang Asal"
+            label = MOVEMENT_BRANCH_LABEL.get(movement_type, "Nama Cabang")
             raise ValueError(f"{label} wajib diisi untuk pergerakan '{MOVEMENT_LABELS.get(movement_type, movement_type)}'.")
 
         # Nama cabang WAJIB cocok dengan daftar aktif di menu Kelola Cabang -
@@ -234,7 +250,10 @@ def _apply_single_movement(
 
     direction = allowed[movement_type]
     part = _get_or_create_part(db, code.strip(), name, part_cache=part_cache)
-    stock = _get_or_create_stock_row(db, part.id, loc, stock_cache=stock_cache)
+    # related_branch diteruskan apa adanya - _get_or_create_stock_row otomatis
+    # mengabaikannya kalau loc="pusat" (selalu 1 kolam), dan memakainya sbg
+    # kunci cabang spesifik kalau loc="cabang".
+    stock = _get_or_create_stock_row(db, part.id, loc, branch_name=related_branch or "", stock_cache=stock_cache)
 
     # ---- TAHAP 1: VALIDASI DULU (belum ada angka stok yang diubah) ----
     new_quantity = stock.quantity + (direction * quantity)
@@ -246,7 +265,9 @@ def _apply_single_movement(
     mirror_new_quantity = None
     if mirror_type and loc == "pusat":
         mirror_direction = MOVEMENT_RULES["cabang"][mirror_type]
-        mirror_stock = _get_or_create_stock_row(db, part.id, "cabang", stock_cache=stock_cache)
+        # Mirror di sisi Cabang HARUS ke cabang SPESIFIK yang sama dgn yang
+        # dipilih di form Pusat (related_branch) - bukan lagi kolam gabungan.
+        mirror_stock = _get_or_create_stock_row(db, part.id, "cabang", branch_name=related_branch or "", stock_cache=stock_cache)
         mirror_new_quantity = mirror_stock.quantity + (mirror_direction * quantity)
         if mirror_new_quantity < 0:
             raise ValueError(
@@ -425,7 +446,7 @@ def bulk_upload_movements(
     if part_cache:
         existing_part_ids = [p.id for p in part_cache.values()]
         for s in db.query(PartStock).filter(PartStock.part_id.in_(existing_part_ids)).with_for_update().all():
-            stock_cache[(s.part_id, s.location)] = s
+            stock_cache[(s.part_id, s.location, s.branch_name)] = s
 
     def _cell(row, i):
         return str(row[i]).strip() if len(row) > i and row[i] is not None else None
@@ -480,9 +501,22 @@ def create_opname(
         raise HTTPException(status_code=400, detail=f"location harus salah satu dari: {', '.join(VALID_INV_LOCATIONS)}.")
     require_department_access(current_user, loc)
 
+    branch_name = (data.branch_name or "").strip()
+    if loc == "cabang" and not branch_name:
+        raise HTTPException(status_code=400, detail="Nama Cabang wajib diisi untuk stok opname di Cabang.")
+    if loc == "cabang":
+        branch_match = (
+            db.query(BranchCatalog)
+            .filter(BranchCatalog.name.ilike(branch_name), BranchCatalog.is_active.is_(True))
+            .first()
+        )
+        if not branch_match:
+            raise HTTPException(status_code=400, detail=f"Nama cabang '{branch_name}' tidak ditemukan di daftar Kelola Cabang (atau sedang nonaktif).")
+        branch_name = branch_match.name  # normalisasi ke ejaan resmi
+
     try:
         part = _get_or_create_part(db, data.code.strip(), data.name)
-        stock = _get_or_create_stock_row(db, part.id, loc)
+        stock = _get_or_create_stock_row(db, part.id, loc, branch_name=branch_name)
 
         system_qty = stock.quantity
         difference = data.counted_quantity - system_qty
@@ -490,6 +524,7 @@ def create_opname(
         db.add(PartStockOpname(
             part_id=part.id,
             location=loc,
+            branch_name=branch_name or None,
             system_quantity=system_qty,
             counted_quantity=data.counted_quantity,
             difference=difference,
@@ -538,12 +573,17 @@ def report_stock_list(
         db.query(PartStock, PartCatalog)
         .join(PartCatalog, PartStock.part_id == PartCatalog.id)
         .filter(PartStock.location == loc)
-        .order_by(PartCatalog.name)
+        .order_by(PartCatalog.name, PartStock.branch_name)
         .all()
     )
-    data = [[p.code, p.name or "-", s.quantity, p.unit_price or 0] for s, p in rows]
+    if loc == "cabang":
+        headers = ["Kode Sparepart", "Nama Sparepart", "Nama Cabang", "Jumlah Stok", "Harga Satuan"]
+        data = [[p.code, p.name or "-", s.branch_name or "-", s.quantity, p.unit_price or 0] for s, p in rows]
+    else:
+        headers = ["Kode Sparepart", "Nama Sparepart", "Jumlah Stok", "Harga Satuan"]
+        data = [[p.code, p.name or "-", s.quantity, p.unit_price or 0] for s, p in rows]
     filename = f"Stok_Sparepart_{loc}_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
-    return _excel_response(["Kode Sparepart", "Nama Sparepart", "Jumlah Stok", "Harga Satuan"], data, f"Stok {loc}", filename)
+    return _excel_response(headers, data, f"Stok {loc}", filename)
 
 
 @router.get("/report/movements")

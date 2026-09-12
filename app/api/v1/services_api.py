@@ -99,6 +99,10 @@ class TicketCreate(BaseModel):
     notif_report_email: bool = False
 
     branch_or_point: Optional[str] = "-"
+    # Nama Cabang SPESIFIK - WAJIB diisi kalau service_type == "cabang" (divalidasi
+    # di endpoint create_ticket), supaya stok yang terpakai bisa dipotong dari
+    # cabang yang BENAR (bukan kolam gabungan semua cabang).
+    branch_name: Optional[str] = None
 
 
 class TicketUpdate(BaseModel):
@@ -142,6 +146,7 @@ class TicketUpdate(BaseModel):
     notif_report_email: bool = False
 
     branch_or_point: Optional[str] = "-"
+    branch_name: Optional[str] = None
 
 
 class TicketPriceUpdate(BaseModel):
@@ -215,12 +220,14 @@ USAGE_LABEL_BY_SERVICE_TYPE = {"pusat": "Pusat", "cabang": "Cabang", "pickup": "
 def _apply_ticket_stock_change(
     db: Session, code: str, name: Optional[str], signed_quantity: int,
     location: str, ticket_number: str, usage_label: str, user_id: Optional[int],
+    branch_name: Optional[str] = None,
 ):
     """
     Memotong/mengembalikan stok Inventory Part LOKASI TERTENTU saat sparepart
     dipakai/diedit di sebuah tiket servis. Berlaku untuk KETIGA jenis tiket:
     - Tiket Pusat   -> memotong stok PUSAT (location="pusat")
-    - Tiket Cabang  -> memotong stok CABANG (location="cabang")
+    - Tiket Cabang  -> memotong stok CABANG (location="cabang"), DI CABANG
+      SPESIFIK sesuai `branch_name` tiket itu (BUKAN kolam gabungan lagi).
     - Tiket Pickup Center -> memotong stok PUSAT juga (location="pusat"),
       karena Pickup Center adalah drop-off point untuk tim Pusat, BUKAN
       lokasi inventory tersendiri.
@@ -242,6 +249,10 @@ def _apply_ticket_stock_change(
     if not code or signed_quantity == 0:
         return
 
+    # branch_name HANYA relevan utk location="cabang" - utk "pusat" selalu
+    # string kosong (satu kolam pusat, tidak dipecah).
+    effective_branch = (branch_name or "").strip() if location == "cabang" else ""
+
     part = db.query(PartCatalog).filter(PartCatalog.code == code).first()
     if part is None:
         part = PartCatalog(code=code, name=name)
@@ -252,12 +263,12 @@ def _apply_ticket_stock_change(
 
     stock = (
         db.query(PartStock)
-        .filter(PartStock.part_id == part.id, PartStock.location == location)
+        .filter(PartStock.part_id == part.id, PartStock.location == location, PartStock.branch_name == effective_branch)
         .with_for_update()
         .first()
     )
     if stock is None:
-        stock = PartStock(part_id=part.id, location=location, quantity=0)
+        stock = PartStock(part_id=part.id, location=location, branch_name=effective_branch, quantity=0)
         db.add(stock)
         db.flush()
 
@@ -339,6 +350,11 @@ def create_ticket(
     # memanggil API ini langsung (mis. lewat Postman), bukan lewat UI.
     require_department_access(current_user, srv_type)
 
+    # Nama Cabang WAJIB utk tiket Cabang - supaya stok terpakai (nanti) bisa
+    # dipotong dari cabang yang BENAR, bukan kolam gabungan semua cabang.
+    if srv_type == "cabang" and not (ticket.branch_name or "").strip():
+        raise HTTPException(status_code=400, detail="Nama Cabang wajib diisi untuk tiket di Cabang.")
+
     try:
         ticket_num = _next_ticket_number(db, srv_type)
 
@@ -357,6 +373,7 @@ def create_ticket(
             province=ticket.province,
             city=ticket.city,
             branch_or_point=ticket.branch_or_point or "-",
+            branch_name=(ticket.branch_name or "").strip() or None,
             received_date=ticket.received_date,
             completed_date=ticket.completed_date,
             product_category=ticket.product_category,
@@ -405,6 +422,7 @@ def create_ticket(
                     _apply_ticket_stock_change(
                         db, sp.code, sp.name, sp.quantity, stock_loc,
                         ticket_num, USAGE_LABEL_BY_SERVICE_TYPE[srv_type], current_user.id,
+                        branch_name=db_ticket.branch_name,
                     )
 
         db.commit()
@@ -458,6 +476,10 @@ def update_ticket(
 
     require_department_access(current_user, ticket.service_type)
 
+    # Nama Cabang WAJIB utk tiket Cabang - sama seperti saat create.
+    if ticket.service_type == "cabang" and not (data.branch_name or "").strip():
+        raise HTTPException(status_code=400, detail="Nama Cabang wajib diisi untuk tiket di Cabang.")
+
     try:
         ticket.customer_name = data.customer_name
         ticket.instansi_name = data.instansi_name
@@ -467,6 +489,8 @@ def update_ticket(
         ticket.province = data.province
         ticket.city = data.city
         ticket.branch_or_point = data.branch_or_point or "-"
+        old_branch_name_for_stock_reversal = ticket.branch_name  # simpan SEBELUM ditimpa - lihat catatan di bawah dekat _apply_ticket_stock_change
+        ticket.branch_name = (data.branch_name or "").strip() or None
         ticket.received_date = data.received_date
         ticket.completed_date = data.completed_date
         ticket.product_category = data.product_category
@@ -514,11 +538,13 @@ def update_ticket(
                     _apply_ticket_stock_change(
                         db, old_code, None, -old_qty, stock_loc,
                         ticket.ticket_number, usage_label, current_user.id,
+                        branch_name=old_branch_name_for_stock_reversal,
                     )
                 if has_new_data and new_line.code and new_line.quantity:
                     _apply_ticket_stock_change(
                         db, new_line.code, new_line.name, new_line.quantity, stock_loc,
                         ticket.ticket_number, usage_label, current_user.id,
+                        branch_name=ticket.branch_name,
                     )
 
             if has_new_data:
