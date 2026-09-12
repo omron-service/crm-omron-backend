@@ -180,3 +180,59 @@ def generate_inventory_excel(headers, rows, sheet_title="Laporan"):
     wb.save(buffer)
     buffer.seek(0)
     return buffer
+def generate_payment_status_excel(rows):
+    """
+    Laporan 'Status Payment Service' - 22 kolom PERSIS sesuai template resmi
+    yang diberikan (contoh_laporan_payment_status.xls).
+
+    `rows` adalah list of dict dgn key: no, ticket_number, owner_name, email,
+    phone, address, id_number, warranty_status, harga, ppn, total, pph23,
+    admin_bank, ppn_for_doku, status_repair, invoice_number, invoice_date,
+    payment_channel, payment_status, created_at, paid_at, departement.
+    """
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    HEADERS = [
+        "No", "Nomer Tiket", "Nama Pemilik", "Email Pemilik", "No. HP/ Whatsapp 1",
+        "Alamat", "NIK/ NPWP", "Status Garansi", "Harga", "PPN", "Total",
+        "PPH23", "Biaya Admin", "PPN for DOKU", "Status Repair", "No. Invoice",
+        "Tanggal Invoice", "Channel Pembayaran", "Status Pembayaran", "Dibuat pada",
+        "Tanggal Bayar", "Departement",
+    ]
+    FIELD_ORDER = [
+        "no", "ticket_number", "owner_name", "email", "phone", "address", "id_number",
+        "warranty_status", "harga", "ppn", "total", "pph23", "admin_bank", "ppn_for_doku",
+        "status_repair", "invoice_number", "invoice_date", "payment_channel", "payment_status",
+        "created_at", "paid_at", "departement",
+    ]
+    COLUMN_WIDTHS = [5, 16, 18, 22, 15, 22, 16, 15, 14, 12, 14, 10, 12, 12, 16, 16, 16, 16, 15, 16, 16, 14]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Status Payment"
+
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="0056B3", end_color="0056B3", fill_type="solid")
+    for col_idx, title in enumerate(HEADERS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=title)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for col_idx, width in enumerate(COLUMN_WIDTHS, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
+    ws.freeze_panes = "A2"
+
+    for row_data in rows:
+        ws.append([row_data.get(key, "") for key in FIELD_ORDER])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
