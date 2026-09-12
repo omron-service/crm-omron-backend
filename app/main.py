@@ -9,9 +9,10 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.v1 import mutations, services_api, auth as auth_api, inventory_parts, locations
+from app.api.v1 import mutations, services_api, auth as auth_api, inventory_parts, locations, ged_integration
 from app.api.v1.services_api import _next_ticket_number
-from app.pages import admin_dashboard, pickup_intake, track
+from app.pages import admin_dashboard, pickup_intake, track, receipt
+from app.services.shipping_status import initial_shipping_status_for_new_ticket, compute_track_display
 from app.db.session import get_db, init_db, get_public_db
 from app.core.deps import get_current_user, require_department_access
 from app.core.limiter import limiter
@@ -46,10 +47,16 @@ async def security_headers_middleware(request: Request, call_next):
 
 
 @app.on_event("startup")
-def _on_startup():
+async def _on_startup():
     # Aman dipanggil berkali-kali: hanya membuat tabel yang belum ada,
     # TIDAK PERNAH menghapus/mengubah tabel atau data yang sudah ada.
     init_db()
+
+    # Jalankan penjadwal auto-transisi "Menunggu Kurir" di background -
+    # TIDAK memblokir startup aplikasi (create_task, bukan await langsung).
+    import asyncio
+    from app.services.scheduler import shipping_status_scheduler_loop
+    asyncio.create_task(shipping_status_scheduler_loop())
 
 
 app.include_router(auth_api.router)
@@ -63,6 +70,8 @@ app.include_router(locations.pickup_router)
 app.include_router(admin_dashboard.router)
 app.include_router(pickup_intake.router)
 app.include_router(track.router)
+app.include_router(receipt.router)
+app.include_router(ged_integration.router)
 
 
 @app.get("/")
@@ -156,12 +165,16 @@ def track_ticket_api(request: Request, data: TrackQuery, db: Session = Depends(g
     def _iso(d):
         return d.strftime("%Y-%m-%d") if d else None
 
+    display = compute_track_display(ticket)
+
     return {
         "ok": True,
         "data": {
             "ticket": ticket.ticket_number,
-            "namaCustomer": ticket.customer_name,
-            "repairStatus": ticket.status or "Diterima",
+            "namaCustomer": ticket.customer_name,  # SELALU nama customer asli - TIDAK PERNAH diganti nama instansi
+            # displayRepairStatus/displayShippingStatus bisa None -> frontend
+            # WAJIB tampilkan "-----" saat None (lihat compute_track_display).
+            "repairStatus": display["displayRepairStatus"],
             "kategori": ticket.product_category,
             "model": ticket.device_model,
             "serialNo": ticket.serial_number,
@@ -170,6 +183,12 @@ def track_ticket_api(request: Request, data: TrackQuery, db: Session = Depends(g
             "statusGaransi": ticket.warranty_status or "Belum ditentukan",
             "remarks": ticket.remarks,
             "keluhan": ticket.complaint,
+            "shippingStatus": display["displayShippingStatus"],
+            "shippingUpdatedAt": _iso(ticket.shipping_updated_at),
+            "awbNumber": display["awbNumber"],
+            # receiverName dari KURIR GED (bukan data kita) - hanya terisi di
+            # titik akhir "Diterima", digabung dgn nama instansi kalau asal Pickup Center.
+            "receiverName": display["receiverName"],
         },
     }
 
@@ -382,6 +401,72 @@ class PickupIntakeCreate(BaseModel):
     turnstileToken: Optional[str] = None  # token CAPTCHA (Opsi 4) - opsional
 
 
+class ReceiptIntakeCreate(BaseModel):
+    """
+    Sama persis dengan PickupIntakeCreate, TAPI dipakai form /receipt yang
+    membuat tiket di data PUSAT (bukan Pickup Center), dan punya 2 field
+    tambahan: notes (Catatan) & notif_whatsapp (kotak centang notifikasi).
+    """
+    customer_name: str = Field(max_length=100)
+    instansi_name: Optional[str] = Field(default=None, max_length=150)
+    customer_phone: str = Field(max_length=30)
+    customer_phone_2: Optional[str] = Field(default=None, max_length=30)
+    customer_address: Optional[str] = Field(default=None, max_length=500)
+    received_date: Optional[datetime] = None
+    product_category: Optional[str] = Field(default=None, max_length=50)
+    device_model: Optional[str] = Field(default=None, max_length=100)
+    serial_number: Optional[str] = Field(default="-", max_length=50)
+    accessories: Optional[str] = Field(default=None, max_length=150)
+    complaint: Optional[str] = Field(default="-", max_length=1000)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    notif_whatsapp: bool = False
+    turnstileToken: Optional[str] = None
+
+
+@app.post("/api/v1/public/receipt")
+@limiter.limit("5/minute")
+def receipt_intake_create(request: Request, data: ReceiptIntakeCreate, db: Session = Depends(get_public_db)):
+    """
+    Endpoint form publik /receipt - PERSIS seperti /pickup-intake, BEDANYA
+    tiket yang terbentuk masuk ke data PUSAT (bukan Pickup Center).
+    """
+    verify_turnstile_or_raise(data.turnstileToken, request)
+    try:
+        ticket_num = _next_ticket_number(db, "pusat")
+        db_ticket = ServiceTicket(
+            ticket_number=ticket_num,
+            service_type="pusat",
+            created_by_location="LOCATION_PUSAT",
+            created_by_user_id=None,  # tidak ada login di form publik ini
+            customer_name=data.customer_name,
+            instansi_name=data.instansi_name,
+            customer_phone=data.customer_phone,
+            customer_phone_2=data.customer_phone_2,
+            customer_address=data.customer_address,
+            received_date=data.received_date,
+            product_category=data.product_category,
+            device_model=data.device_model or "-",
+            serial_number=data.serial_number or "-",
+            accessories=data.accessories,
+            complaint=data.complaint or "-",
+            notes=data.notes,
+            notif_receipt_whatsapp=data.notif_whatsapp,
+            # SENGAJA dikosongkan - sama seperti /pickup-intake, status garansi
+            # belum diketahui saat receipt diterima, biar tim Teknisi yang isi.
+            warranty_status=None,
+            status="Diterima",
+            shipping_status=initial_shipping_status_for_new_ticket("pusat", "Diterima"),
+        )
+        db.add(db_ticket)
+        db.commit()
+        db.refresh(db_ticket)
+        return {"status": "success", "ticket_number": db_ticket.ticket_number}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error saving receipt intake: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Gagal menyimpan data receipt: {str(e)}")
+
+
 @app.post("/api/v1/public/pickup-intake")
 @limiter.limit("5/minute")
 def pickup_intake_create(request: Request, data: PickupIntakeCreate, db: Session = Depends(get_public_db)):
@@ -408,10 +493,10 @@ def pickup_intake_create(request: Request, data: PickupIntakeCreate, db: Session
             # garansi belum diketahui saat drop-off, biar tim Teknisi yang
             # menentukan & mengisi sendiri saat tiket ini nanti diedit.
             warranty_status=None,
-            # Status awal alur Pickup Center - selanjutnya diupdate manual oleh
-            # tim Teknisi, atau (rencana ke depan) otomatis dari integrasi API
-            # sistem tracking jasa kirim GED.
-            status="Diterima di PKP",
+            # Status awal alur Pickup Center - Status Pengiriman (shipping_status)
+            # akan otomatis berjalan dari sini via timer 24 jam & webhook GED.
+            status="Diterima",
+            shipping_status=initial_shipping_status_for_new_ticket("pickup", "Diterima"),
         )
         db.add(db_ticket)
         db.commit()
