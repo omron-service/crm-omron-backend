@@ -109,6 +109,11 @@ class ServiceTicket(Base):
                                                                  # bisa dikirim jadi SATU paket/AWB sekaligus - itu WAJAR.
     received_by_name = Column(String(150), nullable=True)     # nama penerima fisik dari kurir GED (BUKAN dari data kita)
 
+    # Nama Cabang SPESIFIK (bukan cuma service_type='cabang' generik) - WAJIB
+    # diisi utk tiket Cabang, supaya pemakaian sparepart (terpakai_cabang) bisa
+    # dipotong dari stok CABANG YANG BENAR, bukan kolam gabungan semua cabang.
+    branch_name = Column(String(150), nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -297,13 +302,24 @@ class PartCatalog(Base):
 
 
 class PartStock(Base):
-    """Jumlah stok TERKINI per sparepart per lokasi ("pusat" atau "cabang")."""
+    """
+    Jumlah stok TERKINI per sparepart per lokasi ("pusat" atau "cabang").
+
+    branch_name: SENGAJA pakai string kosong "" (BUKAN NULL) sbg default utk
+    baris "pusat" - supaya UniqueConstraint di bawah benar2 menegakkan "cuma
+    boleh 1 baris pusat per part" (kalau pakai NULL, kebanyakan database
+    menganggap NULL != NULL sehingga constraint itu tidak akan pernah
+    ke-trigger dan bisa muncul baris pusat duplikat).
+    Utk baris "cabang", branch_name berisi nama cabang SPESIFIK - artinya
+    SATU part bisa punya BANYAK baris "cabang" (satu per nama cabang).
+    """
     __tablename__ = "part_stock"
-    __table_args__ = (UniqueConstraint("part_id", "location", name="uq_part_stock_part_location"),)
+    __table_args__ = (UniqueConstraint("part_id", "location", "branch_name", name="uq_part_stock_part_location_branch"),)
 
     id = Column(Integer, primary_key=True, index=True)
     part_id = Column(Integer, ForeignKey("part_catalog.id"), nullable=False)
     location = Column(String(20), nullable=False, index=True)  # "pusat" atau "cabang"
+    branch_name = Column(String(150), nullable=False, default="")
     quantity = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -345,6 +361,7 @@ class PartStockOpname(Base):
     id = Column(Integer, primary_key=True, index=True)
     part_id = Column(Integer, ForeignKey("part_catalog.id"), nullable=False)
     location = Column(String(20), nullable=False, index=True)
+    branch_name = Column(String(150), nullable=True)  # nama cabang spesifik kalau location="cabang"
     system_quantity = Column(Integer, nullable=False)
     counted_quantity = Column(Integer, nullable=False)
     difference = Column(Integer, nullable=False)
