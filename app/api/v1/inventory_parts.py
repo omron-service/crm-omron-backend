@@ -490,6 +490,59 @@ def bulk_upload_movements(
 
 
 
+def _apply_single_opname(
+    db: Session, loc: str, code: str, name: Optional[str], counted_quantity: int,
+    note: Optional[str], user_id: int, branch_name: Optional[str] = None,
+    branch_cache: Optional[dict] = None, part_cache: Optional[dict] = None, stock_cache: Optional[dict] = None,
+):
+    """
+    Logika inti SATU baris stok opname - dipakai bersama oleh endpoint manual
+    (/opname) MAUPUN upload massal Excel (/opname/bulk-upload), sama seperti
+    pola _apply_single_movement.
+    """
+    if not code or not code.strip():
+        raise ValueError("Kode Sparepart wajib diisi.")
+    if counted_quantity is None or counted_quantity < 0:
+        raise ValueError("Jumlah Hasil Hitung Fisik wajib diisi (angka >= 0).")
+
+    clean_branch = (branch_name or "").strip()
+    if loc == "cabang":
+        if not clean_branch:
+            raise ValueError("Nama Cabang wajib diisi untuk stok opname di Cabang.")
+        branch_key = clean_branch.lower()
+        if branch_cache is not None:
+            official_name = branch_cache.get(branch_key)
+        else:
+            branch_match = (
+                db.query(BranchCatalog)
+                .filter(BranchCatalog.name.ilike(clean_branch), BranchCatalog.is_active.is_(True))
+                .first()
+            )
+            official_name = branch_match.name if branch_match else None
+        if not official_name:
+            raise ValueError(f"Nama cabang '{clean_branch}' tidak ditemukan di daftar Kelola Cabang (atau sedang nonaktif).")
+        clean_branch = official_name
+
+    part = _get_or_create_part(db, code.strip(), name, part_cache=part_cache)
+    stock = _get_or_create_stock_row(db, part.id, loc, branch_name=clean_branch, stock_cache=stock_cache)
+
+    system_qty = stock.quantity
+    difference = counted_quantity - system_qty
+
+    db.add(PartStockOpname(
+        part_id=part.id,
+        location=loc,
+        branch_name=clean_branch or None,
+        system_quantity=system_qty,
+        counted_quantity=counted_quantity,
+        difference=difference,
+        note=note,
+        performed_by_user_id=user_id,
+    ))
+    stock.quantity = counted_quantity
+    return part, stock, system_qty, difference
+
+
 @router.post("/opname")
 def create_opname(
     data: OpnameIn,
@@ -501,39 +554,11 @@ def create_opname(
         raise HTTPException(status_code=400, detail=f"location harus salah satu dari: {', '.join(VALID_INV_LOCATIONS)}.")
     require_department_access(current_user, loc)
 
-    branch_name = (data.branch_name or "").strip()
-    if loc == "cabang" and not branch_name:
-        raise HTTPException(status_code=400, detail="Nama Cabang wajib diisi untuk stok opname di Cabang.")
-    if loc == "cabang":
-        branch_match = (
-            db.query(BranchCatalog)
-            .filter(BranchCatalog.name.ilike(branch_name), BranchCatalog.is_active.is_(True))
-            .first()
-        )
-        if not branch_match:
-            raise HTTPException(status_code=400, detail=f"Nama cabang '{branch_name}' tidak ditemukan di daftar Kelola Cabang (atau sedang nonaktif).")
-        branch_name = branch_match.name  # normalisasi ke ejaan resmi
-
     try:
-        part = _get_or_create_part(db, data.code.strip(), data.name)
-        stock = _get_or_create_stock_row(db, part.id, loc, branch_name=branch_name)
-
-        system_qty = stock.quantity
-        difference = data.counted_quantity - system_qty
-
-        db.add(PartStockOpname(
-            part_id=part.id,
-            location=loc,
-            branch_name=branch_name or None,
-            system_quantity=system_qty,
-            counted_quantity=data.counted_quantity,
-            difference=difference,
-            note=data.note,
-            performed_by_user_id=current_user.id,
-        ))
-        # Stok opname menyesuaikan jumlah sistem supaya sama dengan hasil hitung fisik.
-        stock.quantity = data.counted_quantity
-
+        part, stock, system_qty, difference = _apply_single_opname(
+            db, loc, data.code, data.name, data.counted_quantity, data.note, current_user.id,
+            branch_name=data.branch_name,
+        )
         db.commit()
         return {
             "status": "success",
@@ -544,10 +569,128 @@ def create_opname(
             "counted_quantity": data.counted_quantity,
             "difference": difference,
         }
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         db.rollback()
         logger.error(f"Error saving stock opname: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Gagal menyimpan stok opname: {str(e)}")
+
+
+@router.get("/opname/template")
+def download_opname_template(
+    location: str = "pusat",
+    current_user: User = Depends(get_current_user),
+):
+    """Contoh format Excel utk upload massal Stok Opname - dibuat langsung (bukan file statis)."""
+    loc = location.lower().strip()
+    headers = ["Nama Sparepart", "Kode Sparepart", "Jumlah Hasil Hitung Fisik", "Catatan"]
+    sample = ["Contoh: LCD Panel", "LCD-001", 25, "Opsional"]
+    if loc == "cabang":
+        headers.insert(2, "Nama Cabang")
+        sample.insert(2, "Contoh: Cabang Medan")
+    excel_file = generate_inventory_excel(headers, [sample], "Stok Opname")
+    filename = f"Contoh_Format_Upload_Stok_Opname_{loc}.xlsx"
+    return StreamingResponse(
+        excel_file,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.post("/opname/bulk-upload")
+def bulk_upload_opname(
+    location: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload massal Stok Opname dari Excel. Format kolom:
+    - Pusat: Nama Sparepart, Kode Sparepart, Jumlah Hasil Hitung Fisik, Catatan (4 kolom)
+    - Cabang: Nama Sparepart, Kode Sparepart, Nama Cabang, Jumlah Hasil Hitung Fisik, Catatan (5 kolom)
+    Baris header terdeteksi otomatis & dilewati. Baris yang gagal dilaporkan
+    jelas tanpa membatalkan baris lain yang valid (sama seperti bulk-upload pergerakan).
+    """
+    loc = location.lower().strip()
+    if loc not in VALID_INV_LOCATIONS:
+        raise HTTPException(status_code=400, detail=f"location harus salah satu dari: {', '.join(VALID_INV_LOCATIONS)}.")
+    require_department_access(current_user, loc)
+
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="File harus berformat .xlsx (Excel).")
+
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(file.file.read()), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Gagal membaca file Excel: {str(e)}")
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="File Excel kosong.")
+
+    start_row = 1 if rows and rows[0] and str(rows[0][0]).strip().lower() in ("nama sparepart", "kode sparepart") else 0
+
+    branch_cache = {b.name.lower(): b.name for b in db.query(BranchCatalog).filter(BranchCatalog.is_active.is_(True)).all()}
+    distinct_codes = {
+        str(row[1]).strip() for row in rows[start_row:]
+        if row and len(row) > 1 and row[1] is not None and str(row[1]).strip()
+    }
+    part_cache = {p.code: p for p in db.query(PartCatalog).filter(PartCatalog.code.in_(distinct_codes)).all()} if distinct_codes else {}
+    stock_cache = {}
+    if part_cache:
+        existing_part_ids = [p.id for p in part_cache.values()]
+        for s in db.query(PartStock).filter(PartStock.part_id.in_(existing_part_ids)).with_for_update().all():
+            stock_cache[(s.part_id, s.location, s.branch_name)] = s
+
+    def _cell(row, i):
+        return str(row[i]).strip() if len(row) > i and row[i] is not None else None
+
+    berhasil, errors = 0, []
+    for idx, row in enumerate(rows[start_row:], start=start_row + 1):
+        if not row or not any(row):
+            continue
+        name = _cell(row, 0)
+        code = _cell(row, 1) or ""
+        if loc == "cabang":
+            branch_name = _cell(row, 2)
+            try:
+                qty_raw = row[3] if len(row) > 3 else None
+                counted_quantity = int(qty_raw) if qty_raw is not None else None
+            except (ValueError, TypeError):
+                counted_quantity = None
+            note = _cell(row, 4)
+        else:
+            branch_name = None
+            try:
+                qty_raw = row[2] if len(row) > 2 else None
+                counted_quantity = int(qty_raw) if qty_raw is not None else None
+            except (ValueError, TypeError):
+                counted_quantity = None
+            note = _cell(row, 3)
+
+        try:
+            _apply_single_opname(
+                db, loc, code, name, counted_quantity, note, current_user.id,
+                branch_name=branch_name, branch_cache=branch_cache, part_cache=part_cache, stock_cache=stock_cache,
+            )
+            berhasil += 1
+        except ValueError as e:
+            errors.append({"row": idx, "reason": str(e)})
+        except Exception as e:
+            errors.append({"row": idx, "reason": f"Error tidak terduga: {str(e)}"})
+
+    db.commit()
+    return {
+        "status": "success",
+        "total_baris_diproses": len(rows) - start_row,
+        "berhasil": berhasil,
+        "gagal": len(errors),
+        "detail_gagal": errors[:50],
+    }
 
 
 # ---------------- Laporan Excel ----------------
