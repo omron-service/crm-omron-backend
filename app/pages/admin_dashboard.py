@@ -699,12 +699,15 @@ def admin_dashboard_page():
             const WARRANTY_PERIOD_OPTIONS = ["1","2","3","4","5","6"];
             const REMARKS_OPTIONS = ["Compliance Check/Sensor Check","Repair","Replace Product/Claim","Unrepairable/Return to Customer","Disagree with Service Fee","No Response"];
             const REPAIR_STATUS_OPTIONS = ["Diterima","Diproses","Selesai/Dikirim","Selesai Diambil","Menunggu Sparepart"];
-            const PICKUP_REPAIR_STATUS_OPTIONS = [
-                "Diterima di PKP", "Diteruskan ke Omron", "Diterima di Omron", "Diproses di Omron",
-                "Selesai/Dikirim balik ke PKP", "Diterima kembali di PKP", "Menunggu Sparepart",
-            ];
+            // CATATAN: sebelumnya Pickup Center punya daftar Repair Status SENDIRI
+            // yang berbeda dari Pusat/Cabang (isinya soal tahapan pengiriman spt
+            // "Diteruskan ke Omron", dll). Ini SEKARANG dihapus & disamakan dengan
+            // Pusat/Cabang, karena tahapan pengiriman itu SUDAH dipindah ke field
+            // terpisah "Status Pengiriman" yang jalan OTOMATIS (bukan dipilih staff
+            // manual lagi) - supaya Repair Status tetap konsisten & tidak
+            // membingungkan teknisi di lokasi mana pun.
             function repairStatusOptionsFor(locKey) {
-                return locKey === 'pickup' ? PICKUP_REPAIR_STATUS_OPTIONS : REPAIR_STATUS_OPTIONS;
+                return REPAIR_STATUS_OPTIONS;
             }
 const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sabang", "Meulaboh", "Aceh Besar", "Aceh Utara", "Aceh Tengah"], "Sumatera Utara": ["Medan", "Binjai", "Pematangsiantar", "Tebing Tinggi", "Sibolga", "Tanjungbalai", "Padang Sidempuan", "Deli Serdang", "Karo"], "Sumatera Barat": ["Padang", "Bukittinggi", "Padang Panjang", "Payakumbuh", "Sawahlunto", "Solok", "Pariaman", "Agam"], "Riau": ["Pekanbaru", "Dumai", "Kampar", "Bengkalis", "Indragiri Hulu", "Indragiri Hilir", "Rokan Hulu", "Rokan Hilir"], "Kepulauan Riau": ["Batam", "Tanjungpinang", "Bintan", "Karimun", "Natuna", "Lingga"], "Jambi": ["Jambi", "Sungai Penuh", "Batanghari", "Bungo", "Kerinci", "Merangin", "Muaro Jambi"], "Sumatera Selatan": ["Palembang", "Lubuklinggau", "Pagar Alam", "Prabumulih", "Ogan Komering Ilir", "Ogan Komering Ulu", "Musi Banyuasin", "Musi Rawas"], "Bangka Belitung": ["Pangkal Pinang", "Bangka", "Bangka Barat", "Bangka Tengah", "Bangka Selatan", "Belitung", "Belitung Timur"], "Bengkulu": ["Bengkulu", "Rejang Lebong", "Bengkulu Utara", "Bengkulu Selatan", "Kepahiang", "Kaur"], "Lampung": ["Bandar Lampung", "Metro", "Lampung Selatan", "Lampung Tengah", "Lampung Utara", "Lampung Timur", "Tulang Bawang", "Pesawaran"], "DKI Jakarta": ["Jakarta Pusat", "Jakarta Utara", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Kepulauan Seribu"], "Jawa Barat": ["Bandung", "Bekasi", "Bogor", "Depok", "Cimahi", "Sukabumi", "Tasikmalaya", "Cirebon", "Banjar", "Karawang", "Purwakarta", "Subang", "Garut", "Ciamis"], "Banten": ["Serang", "Tangerang", "Tangerang Selatan", "Cilegon", "Pandeglang", "Lebak"], "Jawa Tengah": ["Semarang", "Surakarta", "Salatiga", "Magelang", "Pekalongan", "Tegal", "Purwokerto", "Kudus", "Klaten", "Sukoharjo", "Boyolali", "Sragen", "Cilacap"], "DI Yogyakarta": ["Yogyakarta", "Sleman", "Bantul", "Kulon Progo", "Gunungkidul"], "Jawa Timur": ["Surabaya", "Malang", "Kediri", "Madiun", "Blitar", "Mojokerto", "Pasuruan", "Probolinggo", "Batu", "Sidoarjo", "Gresik", "Jember", "Banyuwangi", "Tuban"], "Bali": ["Denpasar", "Badung", "Gianyar", "Tabanan", "Buleleng", "Karangasem", "Klungkung", "Bangli", "Jembrana"], "Nusa Tenggara Barat": ["Mataram", "Bima", "Lombok Barat", "Lombok Tengah", "Lombok Timur", "Lombok Utara", "Sumbawa", "Dompu"], "Nusa Tenggara Timur": ["Kupang", "Ende", "Maumere", "Manggarai", "Manggarai Barat", "Sumba Timur", "Sumba Barat", "Timor Tengah Selatan"], "Kalimantan Barat": ["Pontianak", "Singkawang", "Sambas", "Kubu Raya", "Ketapang", "Sanggau", "Sintang"], "Kalimantan Tengah": ["Palangka Raya", "Kotawaringin Barat", "Kotawaringin Timur", "Kapuas", "Barito Utara", "Barito Selatan"], "Kalimantan Selatan": ["Banjarmasin", "Banjarbaru", "Banjar", "Barito Kuala", "Tanah Laut", "Hulu Sungai Utara", "Hulu Sungai Selatan"], "Kalimantan Timur": ["Samarinda", "Balikpapan", "Bontang", "Kutai Kartanegara", "Kutai Timur", "Kutai Barat", "Berau", "Paser"], "Kalimantan Utara": ["Tarakan", "Bulungan", "Malinau", "Nunukan", "Tana Tidung"], "Sulawesi Utara": ["Manado", "Bitung", "Tomohon", "Kotamobagu", "Minahasa", "Minahasa Utara", "Minahasa Selatan"], "Gorontalo": ["Gorontalo", "Boalemo", "Bone Bolango", "Gorontalo Utara", "Pohuwato"], "Sulawesi Tengah": ["Palu", "Poso", "Banggai", "Donggala", "Toli-Toli", "Parigi Moutong", "Morowali"], "Sulawesi Barat": ["Mamuju", "Majene", "Polewali Mandar", "Mamasa", "Pasangkayu"], "Sulawesi Selatan": ["Makassar", "Parepare", "Palopo", "Gowa", "Maros", "Bone", "Bulukumba", "Pinrang", "Wajo", "Sidenreng Rappang"], "Sulawesi Tenggara": ["Kendari", "Baubau", "Kolaka", "Konawe", "Muna", "Bombana", "Wakatobi"], "Maluku": ["Ambon", "Tual", "Maluku Tengah", "Maluku Tenggara", "Buru", "Seram Bagian Barat"], "Maluku Utara": ["Ternate", "Tidore Kepulauan", "Halmahera Barat", "Halmahera Utara", "Halmahera Tengah", "Halmahera Selatan"], "Papua": ["Jayapura", "Keerom", "Sarmi", "Biak Numfor", "Jayawijaya", "Nabire", "Mimika", "Merauke"], "Papua Barat": ["Manokwari", "Sorong", "Fakfak", "Kaimana", "Teluk Bintuni", "Teluk Wondama", "Raja Ampat"], "Papua Barat Daya": ["Sorong", "Sorong Selatan", "Tambrauw", "Maybrat", "Raja Ampat"], "Papua Tengah": ["Nabire", "Paniai", "Mimika", "Puncak", "Puncak Jaya", "Dogiyai", "Deiyai"], "Papua Pegunungan": ["Jayawijaya", "Pegunungan Bintang", "Yahukimo", "Tolikara", "Yalimo", "Lanny Jaya", "Nduga"], "Papua Selatan": ["Merauke", "Boven Digoel", "Mappi", "Asmat"]};
 
@@ -813,7 +816,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                                 </div>
                                 <div class="form-group">
                                     <label>Repair Status</label>
-                                    <select id="inpStatus-${k}">${opts(repairStatusOptionsFor(k), k === 'pickup' ? 'Diterima di PKP' : 'Diterima')}</select>
+                                    <select id="inpStatus-${k}">${opts(repairStatusOptionsFor(k), 'Diterima')}</select>
                                 </div>
                                 <div class="form-group" style="grid-column: 1 / -1;"><label>Catatan</label><input id="inpNotes-${k}" placeholder="Catatan tambahan"></div>
                             </div>
@@ -1128,7 +1131,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 setVal(`inpSymptom-${k}`, t.symptom_code || '');
                 setVal(`inpLeadtime-${k}`, t.leadtime_days != null ? t.leadtime_days : 1);
                 setVal(`inpRemarks-${k}`, t.remarks || '');
-                setVal(`inpStatus-${k}`, t.status || (k === 'pickup' ? 'Diterima di PKP' : 'Diterima'));
+                setVal(`inpStatus-${k}`, t.status || 'Diterima');
                 setVal(`inpNotes-${k}`, t.notes || '');
 
                 const spareparts = t.spareparts || [];
@@ -1219,7 +1222,7 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 setVal(`inpSymptom-${k}`, '');
                 setVal(`inpLeadtime-${k}`, '1');
                 setVal(`inpRemarks-${k}`, '');
-                setVal(`inpStatus-${k}`, k === 'pickup' ? 'Diterima di PKP' : 'Diterima');
+                setVal(`inpStatus-${k}`, 'Diterima');
                 setVal(`inpNotes-${k}`, '');
 
                 [1, 2, 3].forEach(n => {

@@ -85,6 +85,8 @@ __TURNSTILE_SCRIPT__
   .result{display:none;}
   .result.show{display:block;}
   .result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px;flex-wrap:wrap;}
+  .section-title{font-size:11px;font-weight:800;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 6px;}
+  .dash{color:#c2c8d4;font-weight:400;}
   .ticket-no{font-size:16px;font-weight:800;color:var(--navy);letter-spacing:.3px;}
   .cust-name{font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;}
   .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;}
@@ -156,12 +158,22 @@ __TURNSTILE_SCRIPT__
         <div class="ticket-no" id="resTicket">-</div>
         <div class="cust-name" id="resNama">-</div>
       </div>
-      <span class="badge" id="resBadge">-</span>
     </div>
 
-    <div class="progress" id="resProgress"></div>
+    <div class="section-title">Status Perbaikan</div>
+    <span class="badge" id="resRepairBadge">-</span>
 
-    <div class="info-grid">
+    <div class="section-title">Status Pengiriman</div>
+    <span class="badge" id="resShipBadge">-</span>
+    <div class="progress" id="resProgress"></div>
+    <div class="info-item full" id="resAwbWrap" style="display:none; margin-top:8px;">
+      <div class="k">No. Resi (AWB)</div><div class="v" id="resAwb">-</div>
+    </div>
+    <div class="info-item full" id="resReceiverWrap" style="display:none; margin-top:8px; background:#e7f8ee; border-color:#c3e6cb;">
+      <div class="k">Nama Penerima (dari kurir)</div><div class="v" id="resReceiver">-</div>
+    </div>
+
+    <div class="info-grid" style="margin-top:16px;">
       <div class="info-item"><div class="k">Produk</div><div class="v" id="resProduk">-</div></div>
       <div class="info-item"><div class="k">Serial No.</div><div class="v" id="resSerial">-</div></div>
       <div class="info-item"><div class="k">Tgl. Diterima</div><div class="v" id="resTglTerima">-</div></div>
@@ -185,19 +197,24 @@ __TURNSTILE_SCRIPT__
 </div>
 
 <script>
-const STATUS_STAGES = [
-  { match: ["Diterima", "Diterima di PKP"], label: "Diterima" },
-  { match: ["Diproses", "Menunggu Sparepart", "Diteruskan ke Omron", "Diterima di Omron", "Diproses di Omron"], label: "Diproses" },
-  { match: ["Selesai/Dikirim", "Selesai/Dikirim balik ke PKP"], label: "Selesai" },
-  { match: ["Selesai Diambil", "Diterima kembali di PKP"], label: "Selesai Diambil" }
+// Urutan tahap Status Pengiriman (gabungan Stage 1 khusus Pickup Center + Stage 2 semua asal)
+// dipakai utk progress bar visual - label & urutan HARUS sinkron dgn app/services/shipping_status.py
+const SHIPPING_STAGE_ORDER = [
+  "Diterima Pickup Center", "Menunggu Kurir", "Diteruskan ke Omron",
+  "Diterima Omron", "Diproses", "Dikirim Balik", "Diterima"
 ];
-
-const BADGE_CLASS = {
-  "Diterima":"badge-blue", "Diterima di PKP":"badge-blue",
-  "Diproses":"badge-orange", "Menunggu Sparepart":"badge-orange",
-  "Diteruskan ke Omron":"badge-orange", "Diterima di Omron":"badge-orange", "Diproses di Omron":"badge-orange",
-  "Selesai/Dikirim":"badge-green", "Selesai/Dikirim balik ke PKP":"badge-green",
-  "Selesai Diambil":"badge-gray", "Diterima kembali di PKP":"badge-gray"
+const SHIPPING_STAGE_LABELS = {
+  "Diterima Pickup Center": "Diterima PKP", "Menunggu Kurir": "Menunggu Kurir",
+  "Diteruskan ke Omron": "Ke Omron", "Diterima Omron": "Di Omron",
+  "Diproses": "Diproses", "Dikirim Balik": "Dikirim Balik", "Diterima": "Diterima"
+};
+const SHIPPING_BADGE_CLASS = {
+  "Diterima Pickup Center":"badge-blue", "Menunggu Kurir":"badge-orange", "Diteruskan ke Omron":"badge-orange",
+  "Diterima Omron":"badge-blue", "Diproses":"badge-orange", "Dikirim Balik":"badge-orange", "Diterima":"badge-green"
+};
+const REPAIR_BADGE_CLASS = {
+  "Diterima":"badge-blue", "Diproses":"badge-orange", "Menunggu Sparepart":"badge-orange",
+  "Selesai/Dikirim":"badge-green", "Selesai Diambil":"badge-gray"
 };
 
 const form = document.getElementById('trackForm');
@@ -273,10 +290,46 @@ document.getElementById('btnAgain').addEventListener('click', ()=>{
 
 function renderResult(d){
   document.getElementById('resTicket').textContent = d.ticket || '-';
+  // Nama Customer SELALU tampil apa adanya - TIDAK PERNAH diganti nama instansi.
   document.getElementById('resNama').textContent = d.namaCustomer ? ('Atas nama: ' + d.namaCustomer) : '';
-  const badge = document.getElementById('resBadge');
-  badge.textContent = d.repairStatus || '-';
-  badge.className = 'badge ' + (BADGE_CLASS[d.repairStatus] || 'badge-gray');
+
+  // ---- Status Perbaikan - tampil "-----" kalau backend kirim null (alat blm dipegang teknisi) ----
+  const repairBadge = document.getElementById('resRepairBadge');
+  if (d.repairStatus) {
+    repairBadge.innerHTML = esc(d.repairStatus);
+    repairBadge.className = 'badge ' + (REPAIR_BADGE_CLASS[d.repairStatus] || 'badge-gray');
+  } else {
+    repairBadge.innerHTML = '<span class="dash">-----</span>';
+    repairBadge.className = 'badge badge-gray';
+  }
+
+  // ---- Status Pengiriman - tampil "-----" kalau backend kirim null (sedang dikerjakan, blm ada aktivitas kirim) ----
+  const shipBadge = document.getElementById('resShipBadge');
+  if (d.shippingStatus) {
+    shipBadge.innerHTML = esc(d.shippingStatus);
+    shipBadge.className = 'badge ' + (SHIPPING_BADGE_CLASS[d.shippingStatus] || 'badge-gray');
+  } else {
+    shipBadge.innerHTML = '<span class="dash">-----</span>';
+    shipBadge.className = 'badge badge-gray';
+  }
+
+  // ---- No. Resi (AWB) - hanya tampil kalau sudah ada ----
+  const awbWrap = document.getElementById('resAwbWrap');
+  if (d.awbNumber) {
+    document.getElementById('resAwb').textContent = d.awbNumber;
+    awbWrap.style.display = 'block';
+  } else {
+    awbWrap.style.display = 'none';
+  }
+
+  // ---- Nama Penerima - dari KURIR GED, hanya muncul di titik akhir "Diterima" ----
+  const receiverWrap = document.getElementById('resReceiverWrap');
+  if (d.receiverName) {
+    document.getElementById('resReceiver').textContent = d.receiverName;
+    receiverWrap.style.display = 'block';
+  } else {
+    receiverWrap.style.display = 'none';
+  }
 
   document.getElementById('resProduk').textContent = [d.kategori, d.model].filter(Boolean).join(' - ') || '-';
   document.getElementById('resSerial').textContent = d.serialNo || '-';
@@ -293,19 +346,25 @@ function renderResult(d){
     keluhanWrap.style.display = 'none';
   }
 
-  renderProgress(d.repairStatus);
+  renderProgress(d.shippingStatus);
 }
 
-function renderProgress(status){
+function renderProgress(shippingStatus){
   const wrap = document.getElementById('resProgress');
-  let currentIdx = STATUS_STAGES.findIndex(s => s.match.includes(status));
-  if(currentIdx === -1) currentIdx = 0;
-  wrap.innerHTML = STATUS_STAGES.map((s, i)=>{
+  if (!shippingStatus) {
+    // Belum ada Status Pengiriman sama sekali (mis. tiket Cabang, atau blm
+    // pernah dikirim) - progress bar dikosongkan, tidak relevan ditampilkan.
+    wrap.innerHTML = '';
+    return;
+  }
+  let currentIdx = SHIPPING_STAGE_ORDER.indexOf(shippingStatus);
+  if (currentIdx === -1) currentIdx = 0;
+  wrap.innerHTML = SHIPPING_STAGE_ORDER.map((key, i)=>{
     let cls = 'step';
     if(i < currentIdx) cls += ' done';
     else if(i === currentIdx) cls += ' current';
     const icon = i < currentIdx ? '&#10003;' : (i+1);
-    return `<div class="${cls}"><div class="dot">${icon}</div><div class="lbl">${s.label}</div></div>`;
+    return `<div class="${cls}"><div class="dot">${icon}</div><div class="lbl">${SHIPPING_STAGE_LABELS[key]}</div></div>`;
   }).join('');
 }
 </script>
