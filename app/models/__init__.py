@@ -11,7 +11,7 @@ from app.models.schema import (
     ServiceTicket, User, LocationCounter, DeviceModelCatalog, TicketSparePart,
     PartCatalog, PartStock, PartStockMovement, PartStockOpname,
     BranchCatalog, PickupCenterCatalog, TicketBillingItem, DocumentCounter,
-    LoginOtpCode,
+    LoginOtpCode, ShipmentTrackingEvent,
 )
 
 __all__ = [
@@ -36,4 +36,5 @@ __all__ = [
     "TicketBillingItem",
     "DocumentCounter",
     "LoginOtpCode",
+    "ShipmentTrackingEvent",
 ]

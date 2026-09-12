@@ -101,6 +101,14 @@ class ServiceTicket(Base):
     invoice_created_at = Column(DateTime, nullable=True)   # kapan nomor invoice PERTAMA KALI dibuat
     quotation_number = Column(String(50), nullable=True)  # "067/SPH/MD/2026" - dibuat sekali, permanen
 
+    # ---- Integrasi tracking pengiriman GED (webhook) ----
+    shipping_status = Column(String(50), nullable=True)      # status TERBARU, mis. "Picked Up", "In Transit", "Delivered"
+    shipping_updated_at = Column(DateTime, nullable=True)     # kapan status terbaru ini diterima dari GED
+    awb_number = Column(String(50), nullable=True)            # nomor resi dari GED - SENGAJA TIDAK UNIK, karena
+                                                                 # beberapa tiket dari lokasi Pickup Center yang sama
+                                                                 # bisa dikirim jadi SATU paket/AWB sekaligus - itu WAJAR.
+    received_by_name = Column(String(150), nullable=True)     # nama penerima fisik dari kurir GED (BUKAN dari data kita)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -170,6 +178,24 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)  # nonaktifkan akun = soft, bukan delete
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ShipmentTrackingEvent(Base):
+    """
+    Riwayat LENGKAP setiap update status pengiriman dari GED (bukan cuma
+    status terakhir) - supaya bisa ditampilkan sbg timeline/histori penuh,
+    dan sebagai jejak audit kalau ada yang perlu ditelusuri ulang.
+    """
+    __tablename__ = "shipment_tracking_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("service_tickets.id"), nullable=False)
+    status = Column(String(50), nullable=False)         # apa adanya dari GED, mis. "In Transit"
+    raw_payload = Column(Text, nullable=True)             # simpan body webhook asli (JSON) - jejak audit/debug
+    event_timestamp = Column(DateTime, nullable=True)     # waktu kejadian MENURUT GED (kalau mereka kirim)
+    received_at = Column(DateTime, default=datetime.utcnow)  # waktu KITA menerima webhook ini
+
+    ticket = relationship("ServiceTicket")
 
 
 class LoginOtpCode(Base):
