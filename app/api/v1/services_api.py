@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.db.session import get_db
 from app.core.deps import get_current_user, require_department_access, require_role
+from app.services.shipping_status import initial_shipping_status_for_new_ticket, maybe_apply_diproses_transition
 from app.models.schema import (
     ServiceTicket, LocationCounter, User, DeviceModelCatalog, TicketSparePart,
     PartCatalog, PartStock, PartStockMovement, TicketBillingItem, DocumentCounter,
@@ -372,6 +373,7 @@ def create_ticket(
             notes=ticket.notes,
             remarks=ticket.remarks,
             status=ticket.status or "Diterima",
+            shipping_status=initial_shipping_status_for_new_ticket(srv_type, ticket.status or "Diterima"),
             notif_receipt_whatsapp=ticket.notif_receipt_whatsapp,
             notif_receipt_email=ticket.notif_receipt_email,
             notif_report_whatsapp=ticket.notif_report_whatsapp,
@@ -481,6 +483,7 @@ def update_ticket(
         ticket.notes = data.notes
         ticket.remarks = data.remarks
         ticket.status = data.status or "Diterima"
+        maybe_apply_diproses_transition(ticket)  # cek apakah Repair Status ini memicu Status Pengiriman jadi "Diproses"
         ticket.notif_receipt_whatsapp = data.notif_receipt_whatsapp
         ticket.notif_receipt_email = data.notif_receipt_email
         ticket.notif_report_whatsapp = data.notif_report_whatsapp
