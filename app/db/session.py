@@ -75,6 +75,37 @@ def get_public_db():
         db.close()
 
 
+# ---- KHUSUS WEBHOOK GED (integrasi tracking pengiriman) ----
+# Prinsip SAMA dengan PUBLIC_DATABASE_URL di atas - user database TERPISAH
+# dengan hak akses SESEMPIT mungkin: HANYA boleh baca+update kolom status
+# pengiriman di service_tickets, dan tulis riwayatnya ke
+# shipment_tracking_events. TIDAK BISA sentuh data lain sama sekali.
+# Fallback ke koneksi utama kalau GED_DATABASE_URL belum diisi.
+GED_DATABASE_URL = os.getenv("GED_DATABASE_URL", "").strip()
+if GED_DATABASE_URL:
+    if GED_DATABASE_URL.startswith("postgres://"):
+        GED_DATABASE_URL = GED_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    ged_engine = create_engine(
+        GED_DATABASE_URL, pool_pre_ping=True, pool_recycle=300, pool_size=5, max_overflow=10,
+    )
+    GedSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=ged_engine)
+    logger.info("GED_DATABASE_URL terdeteksi - webhook GED akan pakai user database terbatas.")
+else:
+    GedSessionLocal = SessionLocal
+    logger.warning(
+        "GED_DATABASE_URL belum diatur - webhook GED masih memakai koneksi database "
+        "UTAMA (akses penuh) kalau/ketika endpoint webhook GED sudah aktif digunakan."
+    )
+
+
+def get_ged_db():
+    db = GedSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def init_db():
     """
     PENTING SOAL KEAMANAN DATA:
