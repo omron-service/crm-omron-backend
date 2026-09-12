@@ -21,7 +21,7 @@ def receipt_intake_page():
         if turnstile_site_key else ""
     )
     turnstile_widget = (
-        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}"></div>' if turnstile_site_key else ""
+        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}" data-expired-callback="onTurnstileExpired" data-error-callback="onTurnstileExpired"></div>' if turnstile_site_key else ""
     )
     html = """
     <!DOCTYPE html>
@@ -118,6 +118,14 @@ def receipt_intake_page():
                     .replace(/'/g, '&#39;');
             }
 
+            // Lihat catatan lengkap di pickup_intake.py - token Turnstile basi
+            // diam-diam tanpa tanda visual, ini mereset widget otomatis.
+            function onTurnstileExpired() {
+                if (window.turnstile) {
+                    try { turnstile.reset(); } catch(e) { /* diamkan */ }
+                }
+            }
+
             async function onCategoryChange() {
                 const category = document.getElementById('pCategory').value;
                 let modelEl = document.getElementById('pModel');
@@ -212,7 +220,12 @@ def receipt_intake_page():
                     document.getElementById('successTicketNo').innerText = data.ticket_number;
                     document.getElementById('successBox').style.display = 'block';
                 } catch(err) {
-                    errorBox.textContent = err.message;
+                    if (err.message && err.message.toUpperCase().includes('CAPTCHA') && window.turnstile) {
+                        try { turnstile.reset(); } catch(e) { /* diamkan */ }
+                        errorBox.textContent = 'Verifikasi keamanan kedaluwarsa - silakan centang kotak verifikasi di bawah lagi, lalu klik Simpan (data isian Anda tetap tersimpan).';
+                    } else {
+                        errorBox.textContent = err.message;
+                    }
                     errorBox.style.display = 'block';
                 } finally {
                     submitBtn.disabled = false;

@@ -18,7 +18,7 @@ def track_ticket_page():
         if turnstile_site_key else ""
     )
     turnstile_widget = (
-        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}" style="margin:14px 0;"></div>' if turnstile_site_key else ""
+        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}" data-expired-callback="onTurnstileExpired" data-error-callback="onTurnstileExpired" style="margin:14px 0;"></div>' if turnstile_site_key else ""
     )
     html = """
 <!DOCTYPE html>
@@ -232,6 +232,11 @@ function hideError(){
   alertError.textContent = '';
 }
 function esc(v){ return (v===undefined||v===null) ? '' : String(v); }
+function onTurnstileExpired() {
+  if (window.turnstile) {
+    try { turnstile.reset(); } catch(e) { /* diamkan */ }
+  }
+}
 function fmtDate(d){
   if(!d) return '-';
   try{
@@ -265,7 +270,17 @@ form.addEventListener('submit', async (e)=>{
     const payload = await res.json().catch(()=>({ ok:false, message:'Respons server tidak valid.' }));
 
     if(!res.ok || !payload.ok){
-      showError(payload.message || 'Data tidak ditemukan. Pastikan Nomor Tiket/Serial dan No. HP sesuai.');
+      // Endpoint ini bisa balas 2 format beda: {message:...} utk kegagalan
+      // pencarian tiket biasa, atau {detail:...} khusus dari pengecekan CAPTCHA
+      // (verify_turnstile_or_raise) - keduanya perlu dicek supaya pesan CAPTCHA
+      // tidak ketutup jadi pesan generik "data tidak ditemukan".
+      const errMsg = payload.message || payload.detail || 'Data tidak ditemukan. Pastikan Nomor Tiket/Serial dan No. HP sesuai.';
+      if (errMsg.toUpperCase().includes('CAPTCHA') && window.turnstile) {
+        try { turnstile.reset(); } catch(e) { /* diamkan */ }
+        showError('Verifikasi keamanan kedaluwarsa - silakan centang kotak verifikasi di bawah lagi, lalu klik Lacak Status (isian Anda tetap tersimpan).');
+      } else {
+        showError(errMsg);
+      }
       return;
     }
 

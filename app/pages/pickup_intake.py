@@ -18,7 +18,7 @@ def pickup_intake_page():
         if turnstile_site_key else ""
     )
     turnstile_widget = (
-        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}"></div>' if turnstile_site_key else ""
+        f'<div class="cf-turnstile" data-sitekey="{turnstile_site_key}" data-expired-callback="onTurnstileExpired" data-error-callback="onTurnstileExpired"></div>' if turnstile_site_key else ""
     )
     html = """
     <!DOCTYPE html>
@@ -106,6 +106,18 @@ def pickup_intake_page():
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;');
+            }
+
+            // Token Turnstile hanya berlaku beberapa menit - kalau pengisian form
+            // lebih lama dari itu (wajar di HP, mengetik lebih lambat), token jadi
+            // basi TANPA ada tanda visual apa pun (centang tetap kelihatan tercentang).
+            // Fungsi ini dipanggil OTOMATIS oleh widget Turnstile sendiri saat itu
+            // terjadi - mereset widget diam-diam supaya dapat token baru, TANPA
+            // menghapus data yang sudah diketik user di form.
+            function onTurnstileExpired() {
+                if (window.turnstile) {
+                    try { turnstile.reset(); } catch(e) { /* diamkan */ }
+                }
             }
 
             async function loadInstansiOptions() {
@@ -211,7 +223,16 @@ def pickup_intake_page():
                     document.getElementById('successTicketNo').innerText = data.ticket_number;
                     document.getElementById('successBox').style.display = 'block';
                 } catch(err) {
-                    errorBox.textContent = err.message;
+                    // Kalau errornya soal CAPTCHA (token basi/gagal), reset widget
+                    // Turnstile SAJA - form yang sudah diisi TETAP UTUH, user
+                    // tinggal centang ulang & klik Simpan lagi (tidak perlu refresh
+                    // halaman dan mengetik ulang semua dari awal).
+                    if (err.message && err.message.toUpperCase().includes('CAPTCHA') && window.turnstile) {
+                        try { turnstile.reset(); } catch(e) { /* diamkan */ }
+                        errorBox.textContent = 'Verifikasi keamanan kedaluwarsa - silakan centang kotak verifikasi di bawah lagi, lalu klik Simpan (data isian Anda tetap tersimpan).';
+                    } else {
+                        errorBox.textContent = err.message;
+                    }
                     errorBox.style.display = 'block';
                 } finally {
                     submitBtn.disabled = false;
