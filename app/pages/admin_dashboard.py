@@ -58,7 +58,7 @@ def admin_dashboard_page():
             aside .submenu li a { padding: 10px 20px 10px 35px; display: block; color: #d0e1f9; text-decoration: none; font-size: 13px; }
             aside .submenu li a:hover, aside .submenu li a.active { background: #0056b3; color: white; font-weight: bold; }
             aside .single-menu { padding: 12px 20px; display: block; color: white; text-decoration: none; font-weight: bold; font-size: 14px; }
-            aside .single-menu:hover { background: #0056b3; }
+            aside .single-menu:hover, aside .single-menu.active { background: #0056b3; }
             aside .single-menu.hidden-menu { display: none; }
 
             main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -107,50 +107,50 @@ def admin_dashboard_page():
         <aside id="sidebar" class="hidden">
             <div class="brand">OMRON SERVICE</div>
             <ul>
-                <li><a href="#" class="single-menu" onclick="showTab('dashboard')">1. Dashboard</a></li>
+                <li><a data-tab="dashboard" href="#" class="single-menu" onclick="showTab('dashboard')">1. Dashboard</a></li>
 
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-service')">2. Data Service <span>▼</span></div>
                     <ul id="sub-service" class="submenu open">
-                        <li><a href="#" data-loc="pusat" class="active" onclick="showTab('service-pusat')">a. Data di Pusat</a></li>
-                        <li><a href="#" data-loc="cabang" onclick="showTab('service-cabang')">b. Data di Cabang</a></li>
-                        <li><a href="#" data-loc="pickup" onclick="showTab('service-pickup')">c. Data di Pickup Center</a></li>
+                        <li><a data-tab="service-pusat" href="#" data-loc="pusat" onclick="showTab('service-pusat')">a. Data di Pusat</a></li>
+                        <li><a data-tab="service-cabang" href="#" data-loc="cabang" onclick="showTab('service-cabang')">b. Data di Cabang</a></li>
+                        <li><a data-tab="service-pickup" href="#" data-loc="pickup" onclick="showTab('service-pickup')">c. Data di Pickup Center</a></li>
                     </ul>
                 </li>
 
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-payment')">3. Status Payment Service <span>▼</span></div>
                     <ul id="sub-payment" class="submenu">
-                        <li><a href="#" data-loc="pusat" onclick="showTab('payment-pusat')">a. Payment di Pusat</a></li>
-                        <li><a href="#" data-loc="cabang" onclick="showTab('payment-cabang')">b. Payment di Cabang</a></li>
-                        <li><a href="#" data-loc="pickup" onclick="showTab('payment-pickup')">c. Payment di Pickup Center</a></li>
+                        <li><a data-tab="payment-pusat" href="#" data-loc="pusat" onclick="showTab('payment-pusat')">a. Payment di Pusat</a></li>
+                        <li><a data-tab="payment-cabang" href="#" data-loc="cabang" onclick="showTab('payment-cabang')">b. Payment di Cabang</a></li>
+                        <li><a data-tab="payment-pickup" href="#" data-loc="pickup" onclick="showTab('payment-pickup')">c. Payment di Pickup Center</a></li>
                     </ul>
                 </li>
 
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-inventory')">4. Inventory Part <span>▼</span></div>
                     <ul id="sub-inventory" class="submenu">
-                        <li><a href="#" data-loc="pusat" onclick="showTab('inventory-pusat')">a. Stok Sparepart di Pusat</a></li>
-                        <li><a href="#" data-loc="cabang" onclick="showTab('inventory-cabang')">b. Stok Sparepart di Cabang</a></li>
+                        <li><a data-tab="inventory-pusat" href="#" data-loc="pusat" onclick="showTab('inventory-pusat')">a. Stok Sparepart di Pusat</a></li>
+                        <li><a data-tab="inventory-cabang" href="#" data-loc="cabang" onclick="showTab('inventory-cabang')">b. Stok Sparepart di Cabang</a></li>
                     </ul>
                 </li>
 
                 <li>
                     <div class="menu-title" onclick="toggleSubmenu('sub-laporan')">5. Laporan <span>▼</span></div>
                     <ul id="sub-laporan" class="submenu">
-                        <li><a href="#" onclick="showTab('laporan-service')">a. Laporan Data Service</a></li>
-                        <li><a href="#" onclick="showTab('laporan-payment')">b. Laporan Status Payment</a></li>
-                        <li><a href="#" onclick="showTab('laporan-inventory')">c. Laporan Inventory Part</a></li>
+                        <li><a data-tab="laporan-service" href="#" onclick="showTab('laporan-service')">a. Laporan Data Service</a></li>
+                        <li><a data-tab="laporan-payment" href="#" onclick="showTab('laporan-payment')">b. Laporan Status Payment</a></li>
+                        <li><a data-tab="laporan-inventory" href="#" onclick="showTab('laporan-inventory')">c. Laporan Inventory Part</a></li>
                     </ul>
                 </li>
 
                 <li id="menu-setting">
                     <div class="menu-title" onclick="toggleSubmenu('sub-setting')">6. Setting (Super Admin) <span>▼</span></div>
                     <ul id="sub-setting" class="submenu">
-                        <li><a href="#" onclick="showTab('setting-users')">a. Kelola User</a></li>
-                        <li><a href="#" onclick="showTab('setting-devicemodels')">b. Kelola Model Alat</a></li>
-                        <li><a href="#" onclick="showTab('setting-branches')">c. Kelola Cabang</a></li>
-                        <li><a href="#" onclick="showTab('setting-pickupcenters')">d. Kelola Pickup Center</a></li>
+                        <li><a data-tab="setting-users" href="#" onclick="showTab('setting-users')">a. Kelola User</a></li>
+                        <li><a data-tab="setting-devicemodels" href="#" onclick="showTab('setting-devicemodels')">b. Kelola Model Alat</a></li>
+                        <li><a data-tab="setting-branches" href="#" onclick="showTab('setting-branches')">c. Kelola Cabang</a></li>
+                        <li><a data-tab="setting-pickupcenters" href="#" onclick="showTab('setting-pickupcenters')">d. Kelola Pickup Center</a></li>
                     </ul>
                 </li>
             </ul>
@@ -953,6 +953,13 @@ const PROVINCE_CITY_DATA = {"Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sab
                 if (target) target.classList.remove('hidden');
                 document.getElementById('pageTitle').innerText = 'Menu: ' + tabId.toUpperCase().replace(/-/g, ' ');
                 openSubmenuForTab(tabId);
+
+                // Tandai link sidebar yang sesuai sbg "aktif" (biru), lepas dari
+                // link lain - sebelumnya "a. Data di Pusat" nyangkut aktif terus
+                // krn class="active" di-hardcode di HTML dan tidak pernah dipindah.
+                document.querySelectorAll('aside .submenu a, aside .single-menu').forEach(a => a.classList.remove('active'));
+                const activeLink = document.querySelector(`aside a[data-tab="${tabId}"]`);
+                if (activeLink) activeLink.classList.add('active');
 
                 if (tabId.startsWith('service-')) hideFormInPage(tabId.replace('service-', ''));
                 if (tabId === 'setting-users') { renderUsers(); return; }
